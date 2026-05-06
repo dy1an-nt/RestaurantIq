@@ -9,7 +9,7 @@ const Onboarding = () => {
   const [doordashStoreId, setDoordashStoreId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { user } = useAuth();
+  const { session } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,11 +18,13 @@ const Onboarding = () => {
     setError('');
 
     try {
+      if (!session) throw new Error('Not signed in');
+
       const response = await fetch('/api/restaurant', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await user?.getIdToken()) || ''}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           name: restaurantName,

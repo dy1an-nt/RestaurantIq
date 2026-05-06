@@ -1,0 +1,45 @@
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+
+# --- Dependencies ---
+node_modules/
+
+# --- Build output ---
+dist/
+build/
+*.tsbuildinfo
+
+# --- Vite ---
+.vite/
+.cache/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- macOS metadata (the ._ and .DS_Store nuisance) ---
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# --- Coverage / test output ---
+coverage/
+.nyc_output/
+
+# --- Local Supabase / misc ---
+.supabase/

@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+
 interface MenuItem {
   id: string;
   name: string;
@@ -9,19 +12,6 @@ interface MenuItem {
   trend: 'up' | 'down' | 'flat';
 }
 
-const MOCK_ITEMS: MenuItem[] = [
-  { id: '1', name: 'Wagyu Burger', category: 'Mains', price_cents: 2800, cost_cents: 1200, revenue_30d_cents: 89600, orders_30d: 320, trend: 'up' },
-  { id: '2', name: 'Grilled Salmon', category: 'Mains', price_cents: 3200, cost_cents: 1400, revenue_30d_cents: 73600, orders_30d: 230, trend: 'up' },
-  { id: '3', name: 'Truffle Fries', category: 'Appetizers', price_cents: 1200, cost_cents: 350, revenue_30d_cents: 62400, orders_30d: 520, trend: 'up' },
-  { id: '4', name: 'Chocolate Lava Cake', category: 'Desserts', price_cents: 1100, cost_cents: 250, revenue_30d_cents: 44000, orders_30d: 400, trend: 'up' },
-  { id: '5', name: 'BBQ Ribs', category: 'Mains', price_cents: 3600, cost_cents: 1600, revenue_30d_cents: 39600, orders_30d: 110, trend: 'down' },
-  { id: '6', name: 'Caesar Salad', category: 'Appetizers', price_cents: 1100, cost_cents: 300, revenue_30d_cents: 33000, orders_30d: 300, trend: 'flat' },
-  { id: '7', name: 'Mushroom Risotto', category: 'Mains', price_cents: 2400, cost_cents: 800, revenue_30d_cents: 28800, orders_30d: 120, trend: 'flat' },
-  { id: '8', name: 'Chicken Tenders', category: 'Mains', price_cents: 1800, cost_cents: 500, revenue_30d_cents: 25200, orders_30d: 140, trend: 'flat' },
-  { id: '9', name: 'Tiramisu', category: 'Desserts', price_cents: 1000, cost_cents: 250, revenue_30d_cents: 15000, orders_30d: 150, trend: 'flat' },
-  { id: '10', name: 'Cheesecake', category: 'Desserts', price_cents: 900, cost_cents: 200, revenue_30d_cents: 9000, orders_30d: 100, trend: 'down' },
-];
-
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 const TrendBadge = ({ trend }: { trend: MenuItem['trend'] }) => {
@@ -29,11 +19,6 @@ const TrendBadge = ({ trend }: { trend: MenuItem['trend'] }) => {
   if (trend === 'down') return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">↓ Declining</span>;
   return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">— Stable</span>;
 };
-
-const sorted = [...MOCK_ITEMS].sort((a, b) => b.revenue_30d_cents - a.revenue_30d_cents);
-const topPerformers = sorted.slice(0, 4);
-const middle = sorted.slice(4, 7);
-const needsAttention = sorted.slice(7);
 
 interface RowProps { item: MenuItem; accent?: 'green' | 'red' }
 
@@ -57,25 +42,78 @@ const SectionHeader = ({ label }: { label: string }) => (
   </tr>
 );
 
-const MenuItemsTable = () => (
-  <div className="bg-white rounded-xl shadow overflow-hidden">
-    <table className="w-full text-left">
-      <thead>
-        <tr className="bg-gray-50 border-b border-gray-200">
-          {['Item Name', 'Category', 'Price', 'Cost', '30d Revenue', 'Orders', 'Trend'].map((h) => (
-            <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-gray-100">
-        <SectionHeader label="⭐ Top Performers" />
-        {topPerformers.map((item) => <Row key={item.id} item={item} accent="green" />)}
-        {middle.map((item) => <Row key={item.id} item={item} />)}
-        <SectionHeader label="⚠️ Needs Attention" />
-        {needsAttention.map((item) => <Row key={item.id} item={item} accent="red" />)}
-      </tbody>
-    </table>
-  </div>
+const Shell = ({ children }: { children: React.ReactNode }) => (
+  <div className="bg-white rounded-xl shadow overflow-hidden">{children}</div>
 );
+
+const MenuItemsTable = () => {
+  const [items, setItems] = useState<MenuItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const restaurantId = import.meta.env.VITE_RESTAURANT_ID;
+      if (!restaurantId) {
+        setError('VITE_RESTAURANT_ID is not set');
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('Not signed in');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/restaurants/${restaurantId}/menu-items`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const body = await res.json();
+        if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`);
+        if (!cancelled) setItems(body.data as MenuItem[]);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error) {
+    return <Shell><div className="px-4 py-8 text-sm text-red-600">Failed to load menu items: {error}</div></Shell>;
+  }
+  if (items === null) {
+    return <Shell><div className="px-4 py-8 text-sm text-gray-500">Loading menu items…</div></Shell>;
+  }
+  if (items.length === 0) {
+    return <Shell><div className="px-4 py-8 text-sm text-gray-500">No menu items yet.</div></Shell>;
+  }
+
+  const sorted = [...items].sort((a, b) => b.revenue_30d_cents - a.revenue_30d_cents);
+  const topPerformers = sorted.slice(0, 4);
+  const middle = sorted.slice(4, 7);
+  const needsAttention = sorted.slice(7);
+
+  return (
+    <Shell>
+      <table className="w-full text-left">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            {['Item Name', 'Category', 'Price', 'Cost', '30d Revenue', 'Orders', 'Trend'].map((h) => (
+              <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {topPerformers.length > 0 && <SectionHeader label="⭐ Top Performers" />}
+          {topPerformers.map((item) => <Row key={item.id} item={item} accent="green" />)}
+          {middle.map((item) => <Row key={item.id} item={item} />)}
+          {needsAttention.length > 0 && <SectionHeader label="⚠️ Needs Attention" />}
+          {needsAttention.map((item) => <Row key={item.id} item={item} accent="red" />)}
+        </tbody>
+      </table>
+    </Shell>
+  );
+};
 
 export default MenuItemsTable;

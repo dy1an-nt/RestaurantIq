@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import healthRouter from './routes/health';
 import restaurantRoutes from './routes/restaurant';
 import menuItemsRouter from './routes/menuItems';
+import squareIntegrationRouter from './routes/integrations/square';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/restaurants', menuItemsRouter);
 app.use('/api/restaurant', restaurantRoutes);
+app.use('/api/integrations/square', squareIntegrationRouter);
 
 app.listen(port, () => {
   console.error(`RestaurantIQ API running on port ${port}`);
