@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import healthRouter from './routes/health';
 import restaurantRoutes from './routes/restaurant';
 import menuItemsRouter from './routes/menuItems';
+import insightsRouter from './routes/insights';
 import squareIntegrationRouter from './routes/integrations/square';
 
 dotenv.config();
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use('/api/health', healthRouter);
 app.use('/api/restaurants', menuItemsRouter);
 app.use('/api/restaurant', restaurantRoutes);
+app.use('/api/insights', insightsRouter);
 app.use('/api/integrations/square', squareIntegrationRouter);
 
 app.listen(port, () => {
