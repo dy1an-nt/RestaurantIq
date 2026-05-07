@@ -6,6 +6,7 @@ import healthRouter from './routes/health';
 import restaurantRoutes from './routes/restaurant';
 import menuItemsRouter from './routes/menuItems';
 import squareIntegrationRouter from './routes/integrations/square';
+import insightsRouter from './routes/insights';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/api/health', healthRouter);
 app.use('/api/restaurants', menuItemsRouter);
 app.use('/api/restaurant', restaurantRoutes);
 app.use('/api/integrations/square', squareIntegrationRouter);
+app.use('/api/insights', insightsRouter);
 
 app.listen(port, () => {
   console.error(`RestaurantIQ API running on port ${port}`);

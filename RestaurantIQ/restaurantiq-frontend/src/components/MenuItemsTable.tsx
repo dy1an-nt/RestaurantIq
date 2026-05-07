@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useRestaurant } from './restaurant/RestaurantContext';
 
 interface MenuItem {
   id: string;
@@ -47,18 +48,17 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
 );
 
 const MenuItemsTable = () => {
+  const { restaurant } = useRestaurant();
   const [items, setItems] = useState<MenuItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!restaurant) return;
     let cancelled = false;
-    (async () => {
-      const restaurantId = import.meta.env.VITE_RESTAURANT_ID;
-      if (!restaurantId) {
-        setError('VITE_RESTAURANT_ID is not set');
-        return;
-      }
+    setItems(null);
+    setError(null);
 
+    (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         setError('Not signed in');
@@ -66,7 +66,7 @@ const MenuItemsTable = () => {
       }
 
       try {
-        const res = await fetch(`/api/restaurants/${restaurantId}/menu-items`, {
+        const res = await fetch(`/api/restaurants/${restaurant.id}/menu-items`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         const body = await res.json();
@@ -77,7 +77,7 @@ const MenuItemsTable = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [restaurant]);
 
   if (error) {
     return <Shell><div className="px-4 py-8 text-sm text-red-600">Failed to load menu items: {error}</div></Shell>;

@@ -41,31 +41,42 @@ const upsertCatalog = async (rows: MenuItemRow[]): Promise<Map<string, string>> 
   const map = new Map<string, string>();
   if (rows.length === 0) return map;
 
-  // Supabase upsert needs a unique constraint to merge on. The migration leaves
-  // the (restaurant_id, source, external_id) index commented; until it's added
-  // we do a read-then-insert-or-update loop. Cheap enough for MVP catalog sizes.
-  for (const row of rows) {
-    const { data: existing } = await supabase
+  // Match on (restaurant_id, source, external_id). Migration 005 added a
+  // partial unique index on this triple — Supabase's upsert with onConflict
+  // will use it directly.
+  const withExternal = rows.filter((r) => r.external_id);
+  if (withExternal.length > 0) {
+    const { error } = await supabase
       .from('menu_items')
-      .select('id')
-      .eq('restaurant_id', row.restaurant_id)
-      .eq('source', row.source)
-      .eq('name', row.name) // proxy match while external_id column isn't unique
-      .maybeSingle();
+      .upsert(withExternal, { onConflict: 'restaurant_id,source,external_id' });
+    if (error) throw new Error(`menu_items upsert failed: ${error.message}`);
 
-    if (existing?.id) {
-      await supabase.from('menu_items').update(row).eq('id', existing.id);
-      if (row.external_id) map.set(row.external_id, existing.id);
-    } else {
-      const { data: inserted, error } = await supabase
-        .from('menu_items')
-        .insert(row)
-        .select('id')
-        .single();
-      if (error) throw new Error(`menu_items insert failed: ${error.message}`);
-      if (row.external_id && inserted) map.set(row.external_id, inserted.id);
+    // Re-read to populate the map. Doing a fresh select is more reliable than
+    // trusting the upsert's returning clause: when a row is unchanged, some
+    // PostgREST configs omit it from the returned set, leaving the map sparse
+    // and silently breaking order_item linkage on the next sync.
+    const restaurantId = withExternal[0].restaurant_id;
+    const externalIds = withExternal.map((r) => r.external_id!) as string[];
+    const { data: fetched, error: fetchErr } = await supabase
+      .from('menu_items')
+      .select('id, external_id')
+      .eq('restaurant_id', restaurantId)
+      .eq('source', 'square')
+      .in('external_id', externalIds);
+    if (fetchErr) throw new Error(`menu_items lookup failed: ${fetchErr.message}`);
+    for (const row of fetched ?? []) {
+      if (row.external_id) map.set(row.external_id, row.id);
     }
   }
+
+  // Rows without external_id (shouldn't happen for Square but guard anyway):
+  // fall back to plain insert.
+  const withoutExternal = rows.filter((r) => !r.external_id);
+  if (withoutExternal.length > 0) {
+    const { error } = await supabase.from('menu_items').insert(withoutExternal);
+    if (error) throw new Error(`menu_items insert failed: ${error.message}`);
+  }
+
   return map;
 };
 
@@ -85,6 +96,7 @@ const upsertOrders = async (
       .maybeSingle();
 
     let orderId = existing?.id;
+    const isNew = !orderId;
     if (!orderId) {
       const { data: inserted, error } = await supabase
         .from('orders')
@@ -101,18 +113,29 @@ const upsertOrders = async (
       count++;
     }
 
-    if (items.length > 0) {
-      const rows = items
-        .map((it) => ({
-          order_id: orderId,
-          menu_item_id: it.menu_item_external_id
-            ? externalToInternalMenuItem.get(it.menu_item_external_id) ?? null
-            : null,
-          quantity: it.quantity,
-          unit_price_cents: it.unit_price_cents,
-        }))
-        .filter((r) => r.menu_item_id !== null);
-      if (rows.length > 0) await supabase.from('order_items').insert(rows);
+    // Only insert line items when we created a new order. If we matched an
+    // existing one, its order_items were already inserted on the first sync —
+    // re-inserting would duplicate them and double-count revenue.
+    if (isNew && items.length > 0) {
+      const mapped = items.map((it) => ({
+        order_id: orderId,
+        menu_item_id: it.menu_item_external_id
+          ? externalToInternalMenuItem.get(it.menu_item_external_id) ?? null
+          : null,
+        quantity: it.quantity,
+        unit_price_cents: it.unit_price_cents,
+      }));
+      const rows = mapped.filter((r) => r.menu_item_id !== null);
+      const dropped = mapped.length - rows.length;
+      if (dropped > 0) {
+        console.error(
+          `[square] upsertOrders: dropped ${dropped}/${mapped.length} line items with unmapped menu_item_external_id (catalog may be stale)`,
+        );
+      }
+      if (rows.length > 0) {
+        const { error: oiErr } = await supabase.from('order_items').insert(rows);
+        if (oiErr) throw new Error(`order_items insert failed: ${oiErr.message}`);
+      }
     }
   }
   return count;
@@ -128,26 +151,46 @@ const refreshDailySummaries = async (restaurantId: string): Promise<void> => {
   const sinceIso = since.toISOString();
   const sinceDate = sinceIso.split('T')[0];
 
-  await supabase
+  const { error: delErr } = await supabase
     .from('daily_summaries')
     .delete()
     .eq('restaurant_id', restaurantId)
     .gte('date', sinceDate);
+  if (delErr) throw new Error(`daily_summaries delete failed: ${delErr.message}`);
 
-  const { data: orders } = await supabase
+  // Two-step fetch instead of nested embed: PostgREST's embed syntax only
+  // works when a real FK constraint exists between order_items.order_id and
+  // orders.id. If the FK is missing the embed silently returns []. Doing it
+  // by hand removes that footgun.
+  const { data: orders, error: ordersErr } = await supabase
     .from('orders')
-    .select('id, ordered_at, order_items ( menu_item_id, quantity, unit_price_cents )')
+    .select('id, ordered_at')
     .eq('restaurant_id', restaurantId)
     .gte('ordered_at', sinceIso);
-
+  if (ordersErr) throw new Error(`orders fetch failed: ${ordersErr.message}`);
   if (!orders || orders.length === 0) return;
+
+  const orderIds = orders.map((o) => o.id as string);
+  const { data: orderItems, error: itemsErr } = await supabase
+    .from('order_items')
+    .select('order_id, menu_item_id, quantity, unit_price_cents')
+    .in('order_id', orderIds);
+  if (itemsErr) throw new Error(`order_items fetch failed: ${itemsErr.message}`);
+
+  const itemsByOrder = new Map<string, any[]>();
+  for (const oi of orderItems ?? []) {
+    const arr = itemsByOrder.get(oi.order_id as string) ?? [];
+    arr.push(oi);
+    itemsByOrder.set(oi.order_id as string, arr);
+  }
 
   type Bucket = { qty: number; rev: number; orders: Set<string> };
   const buckets = new Map<string, Bucket>(); // key = `${date}|${menu_item_id}`
 
   for (const o of orders as any[]) {
     const date = (o.ordered_at as string).split('T')[0];
-    for (const oi of o.order_items ?? []) {
+    const lines = itemsByOrder.get(o.id as string) ?? [];
+    for (const oi of lines) {
       if (!oi.menu_item_id) continue;
       const key = `${date}|${oi.menu_item_id}`;
       const b = buckets.get(key) ?? { qty: 0, rev: 0, orders: new Set<string>() };
@@ -170,7 +213,10 @@ const refreshDailySummaries = async (restaurantId: string): Promise<void> => {
     };
   });
 
-  if (summaries.length > 0) await supabase.from('daily_summaries').insert(summaries);
+  if (summaries.length > 0) {
+    const { error: insErr } = await supabase.from('daily_summaries').insert(summaries);
+    if (insErr) throw new Error(`daily_summaries insert failed: ${insErr.message}`);
+  }
 };
 
 /**

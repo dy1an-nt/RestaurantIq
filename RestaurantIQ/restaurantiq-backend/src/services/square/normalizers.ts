@@ -59,8 +59,15 @@ export const normalizeCatalogItem = (
   if (!squareItem || squareItem.type !== 'ITEM' || !squareItem.itemData) return null;
   const itemData = squareItem.itemData;
 
-  const firstVariation = itemData.variations?.[0]?.itemVariationData;
-  const priceCents = toCents(firstVariation?.priceMoney?.amount);
+  const firstVariation = itemData.variations?.[0];
+  const variationData = firstVariation?.itemVariationData;
+  const priceCents = toCents(variationData?.priceMoney?.amount);
+
+  // Store the VARIATION id, not the item id. Square order line items
+  // reference variations via line.catalogObjectId, so this is what
+  // upsertOrders matches against to set menu_item_id on order_items.
+  // Falls back to the item id if the catalog has no variations (rare).
+  const externalId = firstVariation?.id ?? squareItem.id;
 
   return {
     restaurant_id: restaurantId,
@@ -69,7 +76,7 @@ export const normalizeCatalogItem = (
     price_cents: priceCents,
     cost_cents: 0,
     source: 'square',
-    external_id: squareItem.id,
+    external_id: externalId,
   };
 };
 

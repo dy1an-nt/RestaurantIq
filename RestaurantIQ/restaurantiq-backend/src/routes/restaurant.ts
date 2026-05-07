@@ -1,6 +1,11 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth';
-import { createRestaurant, getRestaurant, updateRestaurant } from '../controllers/restaurantController';
+import {
+  createRestaurant,
+  getRestaurant,
+  updateRestaurant,
+  getMyRestaurant,
+} from '../controllers/restaurantController';
 
 const router = express.Router();
 
@@ -8,6 +13,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post('/', createRestaurant);
+router.get('/me', getMyRestaurant);   // must be defined before /:id
 router.get('/:id', getRestaurant);
 router.put('/:id', updateRestaurant);
 

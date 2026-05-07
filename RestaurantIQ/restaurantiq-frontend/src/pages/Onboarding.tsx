@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
+import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
 const Onboarding = () => {
+  const { refresh } = useRestaurant();
   const [restaurantName, setRestaurantName] = useState('');
   const [location, setLocation] = useState('');
-  const [toastGuid, setToastGuid] = useState('');
+  const [squareLocationId, setSquareLocationId] = useState('');
   const [doordashStoreId, setDoordashStoreId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,7 +31,7 @@ const Onboarding = () => {
         body: JSON.stringify({
           name: restaurantName,
           location,
-          toast_guid: toastGuid || null,
+          square_location_id: squareLocationId || null,
           doordash_store_id: doordashStoreId || null,
         }),
       });
@@ -40,7 +42,8 @@ const Onboarding = () => {
         throw new Error(result.error);
       }
 
-      navigate('/dashboard');
+      await refresh();
+      navigate('/');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -97,17 +100,17 @@ const Onboarding = () => {
               />
             </div>
             <div>
-              <label htmlFor="toastGuid" className="block text-sm font-medium text-gray-700">
-                Toast POS GUID (Optional)
+              <label htmlFor="squareLocationId" className="block text-sm font-medium text-gray-700">
+                Square Location ID (Optional)
               </label>
               <input
-                id="toastGuid"
-                name="toastGuid"
+                id="squareLocationId"
+                name="squareLocationId"
                 type="text"
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Your Toast GUID"
-                value={toastGuid}
-                onChange={(e) => setToastGuid(e.target.value)}
+                placeholder="L1PME46WZHPZE"
+                value={squareLocationId}
+                onChange={(e) => setSquareLocationId(e.target.value)}
               />
             </div>
             <div>

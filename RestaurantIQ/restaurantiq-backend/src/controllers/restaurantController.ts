@@ -7,24 +7,53 @@ interface AuthRequest extends Request {
 
 export const createRestaurant = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, location, pos_connected, delivery_connected, toast_guid, doordash_store_id } = req.body;
-    const userId = req.user.sub; // Assuming Supabase user id
+    const { name, location, pos_connected, delivery_connected, square_location_id, doordash_store_id } = req.body;
+    const userId = req.user?.sub; // Supabase user id from JWT
+    if (!userId) {
+      return res.status(401).json({ data: null, error: 'Missing user id on token' });
+    }
 
     const { data, error } = await supabase
       .from('restaurants')
       .insert({
+        user_id: userId,
         name,
         location,
         pos_connected: pos_connected || false,
         delivery_connected: delivery_connected || false,
-        toast_guid,
-        doordash_store_id,
+        square_location_id: square_location_id ?? null,
+        doordash_store_id: doordash_store_id ?? null,
         created_at: new Date().toISOString()
       })
       .select()
       .single();
 
     if (error) throw error;
+
+    res.json({ data, error: null });
+  } catch (error: any) {
+    res.status(500).json({ data: null, error: error.message });
+  }
+};
+
+export const getMyRestaurant = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) {
+      return res.status(401).json({ data: null, error: 'Missing user id on token' });
+    }
+
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('id, name, location, square_location_id, doordash_store_id, pos_connected, delivery_connected')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      return res.status(404).json({ data: null, error: 'No restaurant for this user' });
+    }
 
     res.json({ data, error: null });
   } catch (error: any) {

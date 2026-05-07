@@ -5,6 +5,7 @@ const navItems = [
   { label: 'Dashboard', path: '/', icon: '📊' },
   { label: 'AI Insights', path: '/insights', icon: '🤖' },
   { label: 'Marketing', path: '/marketing', icon: '📢' },
+  { label: 'Integrations', path: '/integrations', icon: '🔌' },
 ];
 
 const Sidebar = () => {

@@ -30,9 +30,24 @@ function dailyQty(min: number, max: number, trend: string, dayIndex: number): nu
 async function seed() {
   console.error('Seeding RestaurantIQ...');
 
+  // restaurants.user_id is NOT NULL (migration 004). Pick up the owner from
+  // env so this script keeps working post-multi-tenant. Create an auth user in
+  // Supabase first and copy its id into SEED_USER_ID.
+  const seedUserId = process.env.SEED_USER_ID;
+  if (!seedUserId) {
+    console.error('Missing SEED_USER_ID env var — set it to the auth.users.id that should own this seeded restaurant.');
+    process.exit(1);
+  }
+
   const { data: restaurant, error: rErr } = await supabase
     .from('restaurants')
-    .insert({ name: 'The Rustic Fork', location: 'Austin, TX', pos_connected: true, delivery_connected: true })
+    .insert({
+      user_id: seedUserId,
+      name: 'The Rustic Fork',
+      location: 'Austin, TX',
+      pos_connected: true,
+      delivery_connected: true,
+    })
     .select()
     .single();
 

@@ -49,7 +49,7 @@ alerts
 
 ## Agent Team System
 
-Three specialized agents per sprint. Each owns a clear vertical slice.
+Four specialized agents per sprint. Each owns a clear vertical slice.
 
 ### Agent Roles
 
@@ -60,13 +60,24 @@ Three specialized agents per sprint. Each owns a clear vertical slice.
 
 **Backend Agent** (`backend-agent`)
 - Goal format: "Build [endpoint/service] that [does what]. It should accept [inputs] and return [outputs]."
-- Owns: Express routes, controllers, Postgres queries, API integrations (Toast, DoorDash), cron jobs
+- Owns: Express routes, controllers, Postgres queries, API integrations (Square, DoorDash), cron jobs
 - Coordination: messages frontend agent with full API contract when an endpoint is ready
 
 **QA + Integration Agent** (`qa-agent`)
 - Goal format: "Verify that [feature] works end to end. Test [these cases]. Fix anything broken between frontend and backend."
 - Owns: connecting frontend to backend, schema mismatches, error states, edge cases, empty states
 - Runs after both frontend and backend agents complete their sprint work
+
+**Teaching Agent** (`teaching-agent`)
+- Goal format: "After all three agents finish and QA passes, summarize everything that was built this sprint. Explain it like I'm a CS student who wants to understand it deeply, not just use it."
+- Owns: `docs/weekly-summary/week-N.md` — one file per sprint
+- Waits for: QA agent to confirm everything passes before writing
+- Produces, for each sprint:
+  - What each file does and why it exists
+  - Key technical decisions and why they were made that way
+  - Any patterns or concepts used (e.g. "this uses the repository pattern because…")
+  - What you should be able to explain in an interview about this week's work
+  - What to look up if you want to go deeper
 
 ### Sprint Workflow
 
@@ -77,6 +88,9 @@ Lead spawns:
 
 After both finish:
   └── qa-agent → verifies end-to-end, fixes integration issues, reports back to lead
+
+After QA passes:
+  └── teaching-agent → writes docs/weekly-summary/week-N.md explaining the sprint deeply
 ```
 
 ## Code Conventions

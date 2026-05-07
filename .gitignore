@@ -43,3 +43,9 @@ coverage/
 
 # --- Local Supabase / misc ---
 .supabase/
+
+# --- Personal study notes (not for public repo) ---
+docs/weekly-summary/
+
+# --- Claude Code worktrees ---
+.claude/worktrees/
