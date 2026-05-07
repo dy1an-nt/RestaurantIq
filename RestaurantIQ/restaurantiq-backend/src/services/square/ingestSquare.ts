@@ -8,6 +8,7 @@ import {
   OrderRow,
   OrderItemRow,
 } from './normalizers';
+import { generateAlerts } from '../alertsService';
 
 interface IngestResult {
   ok: boolean;
@@ -307,6 +308,15 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
 
   // 3. Recompute daily_summaries
   await refreshDailySummaries(restaurantId);
+
+  // 4. Generate alerts from the freshly rebuilt summaries.
+  // Fire-and-forget: alerts errors must not fail the sync.
+  try {
+    const alertCount = await generateAlerts(restaurantId);
+    if (alertCount > 0) console.error(`[square] generated ${alertCount} new alert(s)`);
+  } catch (err) {
+    console.error('[square] alerts generation failed:', (err as Error).message);
+  }
 
   return {
     ok: true,

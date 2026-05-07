@@ -7,7 +7,7 @@ import restaurantRoutes from './routes/restaurant';
 import menuItemsRouter from './routes/menuItems';
 import insightsRouter from './routes/insights';
 import squareIntegrationRouter from './routes/integrations/square';
-import insightsRouter from './routes/insights';
+import alertsRouter from './routes/alerts';
 
 dotenv.config();
 
@@ -27,7 +27,7 @@ app.use('/api/restaurants', menuItemsRouter);
 app.use('/api/restaurant', restaurantRoutes);
 app.use('/api/insights', insightsRouter);
 app.use('/api/integrations/square', squareIntegrationRouter);
-app.use('/api/insights', insightsRouter);
+app.use('/api/alerts', alertsRouter);
 
 app.listen(port, () => {
   console.error(`RestaurantIQ API running on port ${port}`);

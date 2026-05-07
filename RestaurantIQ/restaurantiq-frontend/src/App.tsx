@@ -9,7 +9,9 @@ import Dashboard from './pages/Dashboard';
 import Insights from './pages/Insights';
 import Marketing from './pages/Marketing';
 import Integrations from './pages/Integrations';
+import AlertsPage from './pages/AlertsPage';
 import Sidebar from './components/Sidebar';
+import AlertsBanner from './components/AlertsBanner';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => (
@@ -17,7 +19,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
     <RequireRestaurant>
       <div className="flex min-h-screen bg-gray-50">
         <Sidebar />
-        <main className="flex-1 p-8 overflow-auto">{children}</main>
+        <main className="flex-1 p-8 overflow-auto">
+          <AlertsBanner />
+          {children}
+        </main>
       </div>
     </RequireRestaurant>
   </ProtectedRoute>
@@ -37,6 +42,7 @@ function App() {
             <Route path="/insights" element={<AppLayout><Insights /></AppLayout>} />
             <Route path="/marketing" element={<AppLayout><Marketing /></AppLayout>} />
             <Route path="/integrations" element={<AppLayout><Integrations /></AppLayout>} />
+            <Route path="/alerts" element={<AppLayout><AlertsPage /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
