@@ -8,7 +8,7 @@ interface Alert {
   id: string;
   restaurant_id: string;
   menu_item_id: string | null;
-  type: 'no_sales' | 'trending_down' | 'new_top_performer';
+  type: 'no_sales' | 'trending_down' | 'new_top_performer' | 'unusual_spike' | 'traffic_drop';
   severity: 'info' | 'warning' | 'critical';
   title: string;
   message: string;
@@ -53,6 +53,8 @@ const TYPE_BADGE: Record<Alert['type'], TypeBadgeStyle> = {
   no_sales: { classes: 'bg-red-100 text-red-700', label: 'No Sales' },
   trending_down: { classes: 'bg-amber-100 text-amber-700', label: 'Trending Down' },
   new_top_performer: { classes: 'bg-green-100 text-green-700', label: 'New Top Performer' },
+  unusual_spike: { classes: 'bg-purple-100 text-purple-700', label: 'Unusual Spike' },
+  traffic_drop: { classes: 'bg-orange-100 text-orange-700', label: 'Traffic Drop' },
 };
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -113,6 +115,8 @@ const AlertsPage = () => {
   const { session } = useAuth();
   const { restaurant } = useRestaurant();
   const [pageState, setPageState] = useState<PageState>({ status: 'loading' });
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
 
   useEffect(() => {
     if (!session) {
@@ -123,6 +127,7 @@ const AlertsPage = () => {
     let cancelled = false;
     const controller = new AbortController();
     setPageState({ status: 'loading' });
+    setErrorMsg(null);
 
     (async () => {
       try {
@@ -154,7 +159,6 @@ const AlertsPage = () => {
       } catch (err: unknown) {
         if (cancelled) return;
         if (err instanceof Error && err.name === 'AbortError') return;
-        console.error('[AlertsPage] fetch error:', err);
         setPageState({
           status: 'error',
           message: err instanceof Error ? err.message : 'An unexpected error occurred.',
@@ -169,7 +173,10 @@ const AlertsPage = () => {
   }, [session]);
 
   const handleMarkRead = async (id: string) => {
-    if (!session) return;
+    if (!session || isMarkingAll) return;
+
+    // Save prior state for rollback
+    const priorState = pageState;
 
     // Optimistic update
     setPageState((prev) => {
@@ -187,15 +194,22 @@ const AlertsPage = () => {
       });
       const body: { data: { id: string } | null; error: string | null } = await res.json();
       if (!res.ok || body.error) {
-        console.error('[AlertsPage] mark-read error:', body.error);
+        setPageState(priorState);
+        setErrorMsg('Failed to mark alert as read. Please try again.');
       }
-    } catch (err: unknown) {
-      console.error('[AlertsPage] mark-read error:', err);
+    } catch {
+      setPageState(priorState);
+      setErrorMsg('Failed to mark alert as read. Please try again.');
     }
   };
 
   const handleMarkAllRead = async () => {
-    if (!session) return;
+    if (!session || isMarkingAll) return;
+
+    setIsMarkingAll(true);
+
+    // Save prior state for rollback
+    const priorState = pageState;
 
     // Optimistic update
     setPageState((prev) => {
@@ -213,10 +227,14 @@ const AlertsPage = () => {
       });
       const body: { data: { updated: number } | null; error: string | null } = await res.json();
       if (!res.ok || body.error) {
-        console.error('[AlertsPage] read-all error:', body.error);
+        setPageState(priorState);
+        setErrorMsg('Failed to mark all alerts as read. Please try again.');
       }
-    } catch (err: unknown) {
-      console.error('[AlertsPage] read-all error:', err);
+    } catch {
+      setPageState(priorState);
+      setErrorMsg('Failed to mark all alerts as read. Please try again.');
+    } finally {
+      setIsMarkingAll(false);
     }
   };
 
@@ -236,12 +254,26 @@ const AlertsPage = () => {
         {hasUnread && (
           <button
             onClick={handleMarkAllRead}
-            className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 transition-colors"
+            disabled={isMarkingAll}
+            className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 transition-colors disabled:opacity-50"
           >
-            Mark all read
+            {isMarkingAll ? 'Marking…' : 'Mark all read'}
           </button>
         )}
       </div>
+
+      {/* Inline error banner for mutation failures */}
+      {errorMsg && (
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 px-4 py-3 rounded-lg">
+          <p className="text-sm text-red-700">{errorMsg}</p>
+          <button
+            onClick={() => setErrorMsg(null)}
+            className="text-red-500 hover:text-red-700 text-xs ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Loading state */}
       {pageState.status === 'loading' && (

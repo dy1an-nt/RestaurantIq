@@ -4,7 +4,7 @@ import { supabase } from '../db';
 // Types
 // ---------------------------------------------------------------------------
 
-export type AlertType = 'no_sales' | 'trending_down' | 'new_top_performer';
+export type AlertType = 'no_sales' | 'trending_down' | 'new_top_performer' | 'unusual_spike' | 'traffic_drop';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 export interface AlertInsert {
@@ -141,7 +141,7 @@ const fetchRecentAlertKeys = async (restaurantId: string): Promise<Set<string>> 
     .from('alerts')
     .select('type, menu_item_id')
     .eq('restaurant_id', restaurantId)
-    .in('type', ['no_sales', 'trending_down', 'new_top_performer'] as AlertType[])
+    .in('type', ['no_sales', 'trending_down', 'new_top_performer', 'unusual_spike', 'traffic_drop'] as AlertType[])
     .gte('created_at', sevenDaysAgo.toISOString());
 
   if (error) throw new Error(`alerts dedup fetch failed: ${error.message}`);
