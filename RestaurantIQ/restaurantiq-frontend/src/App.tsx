@@ -10,6 +10,7 @@ import Insights from './pages/Insights';
 import Marketing from './pages/Marketing';
 import Integrations from './pages/Integrations';
 import AlertsPage from './pages/AlertsPage';
+import Analytics from './pages/Analytics';
 import Sidebar from './components/Sidebar';
 import AlertsBanner from './components/AlertsBanner';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -43,6 +44,7 @@ function App() {
             <Route path="/marketing" element={<AppLayout><Marketing /></AppLayout>} />
             <Route path="/integrations" element={<AppLayout><Integrations /></AppLayout>} />
             <Route path="/alerts" element={<AppLayout><AlertsPage /></AppLayout>} />
+            <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
