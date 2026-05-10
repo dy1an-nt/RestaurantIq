@@ -165,6 +165,7 @@ const Marketing = () => {
   useEffect(() => {
     if (!restaurant) return;
     let cancelled = false;
+    const controller = new AbortController();
     setMenuItems(null);
     setMenuItemsError(null);
 
@@ -176,6 +177,7 @@ const Marketing = () => {
       }
       try {
         const res = await fetch(`/api/restaurants/${restaurant.id}/menu-items`, {
+          signal: controller.signal,
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         const body = await res.json() as { data: MenuItem[]; error: string | null };
@@ -187,13 +189,17 @@ const Marketing = () => {
           }
         }
       } catch (err: unknown) {
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return;
         if (!cancelled) {
           setMenuItemsError(err instanceof Error ? err.message : 'Failed to load menu items');
         }
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [restaurant]);
 
   const handleGenerate = async () => {

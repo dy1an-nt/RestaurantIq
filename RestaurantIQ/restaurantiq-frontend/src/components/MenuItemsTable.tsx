@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRestaurant } from './restaurant/RestaurantContext';
 
@@ -55,6 +56,7 @@ const MenuItemsTable = () => {
   useEffect(() => {
     if (!restaurant) return;
     let cancelled = false;
+    const controller = new AbortController();
     setItems(null);
     setError(null);
 
@@ -67,16 +69,21 @@ const MenuItemsTable = () => {
 
       try {
         const res = await fetch(`/api/restaurants/${restaurant.id}/menu-items`, {
+          signal: controller.signal,
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         const body = await res.json();
         if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`);
         if (!cancelled) setItems(body.data as MenuItem[]);
       } catch (err: any) {
-        if (!cancelled) setError(err.message);
+        if (cancelled || err.name === 'AbortError') return;
+        setError(err.message);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [restaurant]);
 
   if (error) {
@@ -86,7 +93,33 @@ const MenuItemsTable = () => {
     return <Shell><div className="px-4 py-8 text-sm text-gray-500">Loading menu items…</div></Shell>;
   }
   if (items.length === 0) {
-    return <Shell><div className="px-4 py-8 text-sm text-gray-500">No menu items yet.</div></Shell>;
+    return (
+      <Shell>
+        <div className="p-12 text-center">
+          <p className="text-lg font-semibold text-gray-900">No menu items yet</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Connect your Square POS and sync your catalog to see menu performance data.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            {restaurant?.pos_connected ? (
+              <Link
+                to="/integrations"
+                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800"
+              >
+                Run sync
+              </Link>
+            ) : (
+              <Link
+                to="/integrations"
+                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+              >
+                Connect Square
+              </Link>
+            )}
+          </div>
+        </div>
+      </Shell>
+    );
   }
 
   const sorted = [...items].sort((a, b) => b.revenue_30d_cents - a.revenue_30d_cents);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import RevenueTrendChart from '../components/charts/RevenueTrendChart';
 import TopItemsChart from '../components/charts/TopItemsChart';
@@ -90,29 +91,46 @@ const Analytics = () => {
         </div>
       )}
 
-      {/* Revenue Trend */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend</h2>
-        <RevenueTrendChart
-          data={dashboard?.revenueTrend}
-          loading={loading}
-        />
-      </div>
+      {!loading && !error && dashboard && dashboard.revenueTrend.length === 0 && dashboard.topItems.length === 0 && dashboard.hourlyDistribution.length === 0 ? (
+        <div className="bg-white rounded-xl shadow p-12 text-center">
+          <p className="text-xl font-semibold text-gray-900">No analytics data yet</p>
+          <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
+            Sync your Square catalog and orders to start seeing revenue trends and top performers.
+          </p>
+          <Link
+            to="/integrations"
+            className="inline-flex items-center mt-6 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+          >
+            Go to Integrations
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* Revenue Trend */}
+          <div className="bg-white rounded-xl shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend</h2>
+            <RevenueTrendChart
+              data={dashboard?.revenueTrend}
+              loading={loading}
+            />
+          </div>
 
-      {/* Top Items */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Items by Revenue</h2>
-        <TopItemsChart
-          data={dashboard?.topItems}
-          loading={loading}
-        />
-      </div>
+          {/* Top Items */}
+          <div className="bg-white rounded-xl shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Items by Revenue</h2>
+            <TopItemsChart
+              data={dashboard?.topItems}
+              loading={loading}
+            />
+          </div>
 
-      {/* Heatmap */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Busiest Sales Hours</h2>
-        <SalesHeatmap data={dashboard?.hourlyDistribution} loading={loading} />
-      </div>
+          {/* Heatmap */}
+          <div className="bg-white rounded-xl shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Busiest Sales Hours</h2>
+            <SalesHeatmap data={dashboard?.hourlyDistribution} loading={loading} />
+          </div>
+        </>
+      )}
     </div>
   );
 };

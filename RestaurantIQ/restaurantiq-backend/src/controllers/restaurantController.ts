@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../server';
+import { supabase } from '../db';
 
 interface AuthRequest extends Request {
   user?: any;
@@ -11,6 +11,16 @@ export const createRestaurant = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.sub; // Supabase user id from JWT
     if (!userId) {
       return res.status(401).json({ data: null, error: 'Missing user id on token' });
+    }
+
+    // Guard against double-create (network retries, double-click).
+    const { data: existing } = await supabase
+      .from('restaurants')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existing) {
+      return res.status(409).json({ data: null, error: 'A restaurant already exists for this account' });
     }
 
     const { data, error } = await supabase
@@ -28,7 +38,12 @@ export const createRestaurant = async (req: AuthRequest, res: Response) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ data: null, error: 'A restaurant already exists for this account' });
+      }
+      throw error;
+    }
 
     res.json({ data, error: null });
   } catch (error: any) {
@@ -64,14 +79,18 @@ export const getMyRestaurant = async (req: AuthRequest, res: Response) => {
 export const getRestaurant = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = req.user?.sub;
+    if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
     const { data, error } = await supabase
       .from('restaurants')
-      .select('*')
+      .select('id, name, location, square_location_id, doordash_store_id, pos_connected, delivery_connected')
       .eq('id', id)
-      .single();
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) return res.status(404).json({ data: null, error: 'Not found' });
 
     res.json({ data, error: null });
   } catch (error: any) {
@@ -82,16 +101,25 @@ export const getRestaurant = async (req: AuthRequest, res: Response) => {
 export const updateRestaurant = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const userId = req.user?.sub;
+    if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
+
+    const { name, location, doordash_store_id } = req.body;
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) updates.name = name;
+    if (location !== undefined) updates.location = location;
+    if (doordash_store_id !== undefined) updates.doordash_store_id = doordash_store_id;
 
     const { data, error } = await supabase
       .from('restaurants')
       .update(updates)
       .eq('id', id)
-      .select()
-      .single();
+      .eq('user_id', userId)
+      .select('id, name, location, square_location_id, doordash_store_id, pos_connected, delivery_connected')
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) return res.status(404).json({ data: null, error: 'Not found' });
 
     res.json({ data, error: null });
   } catch (error: any) {

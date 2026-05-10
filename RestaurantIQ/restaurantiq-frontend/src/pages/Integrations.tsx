@@ -154,8 +154,9 @@ const Integrations = () => {
               required
               placeholder="L1PME46WZHPZE"
               value={locationId}
+              disabled={connectBusy}
               onChange={(e) => setLocationId(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
             />
           </div>
           <div>
@@ -167,8 +168,9 @@ const Integrations = () => {
               placeholder="EAAA…"
               autoComplete="off"
               value={accessToken}
+              disabled={connectBusy}
               onChange={(e) => setAccessToken(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
             />
             <p className="mt-1 text-xs text-gray-500">
               Get one from <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">developer.squareup.com</a> → your app → Sandbox → Credentials.
@@ -194,13 +196,18 @@ const Integrations = () => {
               <div className="text-sm font-medium text-gray-900">Pull catalog + orders</div>
               <div className="text-xs text-gray-500">Refreshes menu items, orders, and the last 30 days of summaries.</div>
             </div>
-            <button
-              onClick={handleSync}
-              disabled={syncBusy || !connected}
-              className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 disabled:opacity-50"
-            >
-              {syncBusy ? 'Syncing…' : 'Run sync'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleSync}
+                disabled={syncBusy || !connected}
+                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 disabled:opacity-50"
+              >
+                {syncBusy ? 'Syncing…' : 'Run sync'}
+              </button>
+              {!connected && (
+                <p className="text-xs text-gray-400">Connect Square first to enable sync.</p>
+              )}
+            </div>
           </div>
           {syncErr && <div className="text-sm text-red-600">{syncErr}</div>}
           {syncResult && (

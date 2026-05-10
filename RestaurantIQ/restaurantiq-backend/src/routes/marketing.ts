@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { JWTPayload } from 'jose';
-import { supabase } from '../server';
+import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
 import { generateMarketingCopy } from '../services/marketingService';
 

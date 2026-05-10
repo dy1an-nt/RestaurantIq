@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { useRestaurant } from './restaurant/RestaurantContext';
 
@@ -196,7 +197,6 @@ const InsightsPanel = () => {
       } catch (err: unknown) {
         if (cancelled) return;
         if (err instanceof Error && err.name === 'AbortError') return;
-        console.error('[InsightsPanel] fetch error:', err);
         setFetchState({
           status: 'error',
           message: err instanceof Error ? err.message : 'An unexpected error occurred.',
@@ -247,11 +247,17 @@ const InsightsPanel = () => {
 
       {/* Empty state */}
       {fetchState.status === 'empty' && (
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center space-y-2">
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
           <p className="text-base font-semibold text-gray-700">No insights yet</p>
-          <p className="text-sm text-gray-400">
-            Connect your POS and sync some orders — insights will appear once there is enough data.
+          <p className="text-sm text-gray-400 mt-1">
+            Connect your Square POS and sync at least 3 days of sales data — AI recommendations will appear once there's enough to analyze.
           </p>
+          <Link
+            to="/integrations"
+            className="inline-flex items-center mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+          >
+            Connect Square
+          </Link>
         </div>
       )}
 

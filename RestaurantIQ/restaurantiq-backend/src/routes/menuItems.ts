@@ -8,6 +8,23 @@ router.use(authMiddleware);
 
 router.get('/:restaurantId/menu-items', async (req: Request, res: Response) => {
   const { restaurantId } = req.params;
+  const userId = (req as any).user?.sub;
+  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
+
+  const { data: owned, error: ownerErr } = await supabase
+    .from('restaurants')
+    .select('id')
+    .eq('id', restaurantId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (ownerErr) {
+    console.error(ownerErr);
+    return res.status(500).json({ data: null, error: 'Failed to verify restaurant ownership' });
+  }
+  if (!owned) {
+    return res.status(403).json({ data: null, error: 'Restaurant not found or access denied' });
+  }
 
   const { data: items, error: itemsErr } = await supabase
     .from('menu_items')
@@ -39,6 +56,7 @@ router.get('/:restaurantId/menu-items', async (req: Request, res: Response) => {
 
   const byItem = new Map<string, { rev: number; ord: number; recentRev: number; priorRev: number }>();
   for (const s of summaries ?? []) {
+    if (!s.menu_item_id) continue;
     const key = s.menu_item_id as string;
     const bucket = byItem.get(key) ?? { rev: 0, ord: 0, recentRev: 0, priorRev: 0 };
     bucket.rev += s.total_revenue_cents ?? 0;

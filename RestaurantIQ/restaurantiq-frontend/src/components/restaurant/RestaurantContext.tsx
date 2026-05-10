@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 export interface Restaurant {
   id: string;
@@ -32,7 +33,8 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [loading, setLoading] = useState(true);
 
   const fetchMe = useCallback(async () => {
-    if (!session) {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (!currentSession) {
       setRestaurant(null);
       setLoading(false);
       return;
@@ -40,7 +42,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setLoading(true);
     try {
       const res = await fetch('/api/restaurant/me', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${currentSession.access_token}` },
       });
       if (res.status === 404) {
         setRestaurant(null);
@@ -55,7 +57,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, []); // no deps — reads session at call time via getSession()
 
   useEffect(() => {
     if (authLoading) return;

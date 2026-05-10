@@ -11,6 +11,7 @@ import Marketing from './pages/Marketing';
 import Integrations from './pages/Integrations';
 import AlertsPage from './pages/AlertsPage';
 import Analytics from './pages/Analytics';
+import MarginAnalysis from './pages/MarginAnalysis';
 import Sidebar from './components/Sidebar';
 import AlertsBanner from './components/AlertsBanner';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -45,6 +46,7 @@ function App() {
             <Route path="/integrations" element={<AppLayout><Integrations /></AppLayout>} />
             <Route path="/alerts" element={<AppLayout><AlertsPage /></AppLayout>} />
             <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
+            <Route path="/margins" element={<AppLayout><MarginAnalysis /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
