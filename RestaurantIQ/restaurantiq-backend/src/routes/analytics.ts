@@ -230,7 +230,7 @@ router.get('/margins', async (req: AuthRequest, res: Response) => {
     return {
       id: item.id,
       name: item.name,
-      category: item.category,
+      category: item.category ?? '',
       price_cents: item.price_cents,
       cost_cents,
       profit_cents,

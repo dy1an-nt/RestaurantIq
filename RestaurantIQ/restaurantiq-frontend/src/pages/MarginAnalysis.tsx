@@ -221,13 +221,14 @@ const MarginAnalysis = () => {
         <div className="bg-white rounded-xl shadow p-12 text-center">
           <p className="text-xl font-semibold text-gray-900">No margin data yet</p>
           <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
-            Add cost prices to your menu items to see profitability analysis.
+            Add cost data to your menu items to see profitability analysis. Costs are entered
+            from the Dashboard menu table.
           </p>
           <Link
-            to="/integrations"
+            to="/"
             className="inline-flex items-center mt-6 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
           >
-            Go to Integrations
+            Add cost data to your menu items
           </Link>
         </div>
       )}
