@@ -54,7 +54,7 @@ const loadRestaurantCreds = async (restaurantId: string): Promise<DoorDashCreds>
  * (or is about to) and a refresh token is available. A refreshed token is
  * persisted back to the restaurant row, encrypted — mirroring the connect path.
  */
-const ensureFreshToken = async (restaurant: DoorDashCreds): Promise<string> => {
+export const ensureFreshToken = async (restaurant: DoorDashCreds): Promise<string> => {
   const current = decryptTokenSafe(restaurant.doordash_access_token ?? '');
 
   const expiresAt = restaurant.doordash_token_expires_at
