@@ -23,25 +23,31 @@ interface Props {
  * Empty string → cents === null (clear cost).
  */
 function parseDollars(raw: string): { cents: number | null; error: string | null } {
-  const trimmed = raw.trim();
+  // Strip a leading currency symbol and thousands separators so both "4.25"
+  // and "$4.25" (and "$1,500.00") are accepted, per spec.
+  const trimmed = raw.trim().replace(/^\$/, '').replace(/,/g, '').trim();
   if (trimmed === '') return { cents: null, error: null };
 
-  // Reject non-numeric text and more than two decimal places (sub-cent values)
-  if (!/^\d*\.?\d{0,2}$/.test(trimmed) || trimmed === '.') {
-    return { cents: null, error: 'Enter a valid dollar amount with up to two decimals (e.g. 12.50).' };
+  // Allow an optional leading sign so negatives parse and hit the dedicated
+  // "zero or greater" message; reject any other non-numeric text and more than
+  // two decimal places (sub-cent values).
+  if (!/^-?\d*\.?\d{0,2}$/.test(trimmed) || trimmed === '.' || trimmed === '-') {
+    return { cents: null, error: 'Enter a valid amount.' };
   }
 
   const dollars = parseFloat(trimmed);
-  if (isNaN(dollars)) {
-    return { cents: null, error: 'Enter a valid dollar amount (e.g. 12.50).' };
+  if (!Number.isFinite(dollars)) {
+    return { cents: null, error: 'Enter a valid amount.' };
   }
   if (dollars < 0) {
-    return { cents: null, error: 'Cost cannot be negative.' };
+    return { cents: null, error: 'Cost must be zero or greater.' };
   }
   if (dollars > 1_000_000) {
     return { cents: null, error: 'Cost cannot exceed $1,000,000.' };
   }
 
+  // Two-decimal cap above keeps this multiplication exact for valid input;
+  // round to defend against binary float drift (e.g. 4.25 * 100).
   const cents = Math.round(dollars * 100);
   return { cents, error: null };
 }
@@ -202,6 +208,14 @@ const EditMenuItemModal = ({ item, restaurantId, onClose, onSaved }: Props) => {
             placeholder="e.g. Appetizers"
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
           />
+        </div>
+
+        {/* Price (read-only — shown for context while entering cost) */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Price</label>
+          <p className="mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">
+            {centsToDollarString(item.price_cents) ? `$${centsToDollarString(item.price_cents)}` : '—'}
+          </p>
         </div>
 
         {/* Cost */}

@@ -27,14 +27,16 @@ router.use(authMiddleware);
  * POST /api/integrations/square/connect
  * Body: { restaurant_id: string, location_id: string, access_token: string }
  *
- * Persists the Square location + access token onto the restaurant row.
- * Production should encrypt access_token at rest — out of scope for MVP.
+ * Persists the Square location + access token onto the restaurant row. Tokens
+ * are AES-GCM encrypted at rest (lib/tokenCrypto). The optional refresh_token /
+ * expires_in enable the automatic refresh flow (Sprint K) — sandbox PAT-style
+ * tokens won't have them, in which case the integration behaves as before.
  */
 router.post('/connect', async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
-  const { restaurant_id, location_id, access_token } = req.body ?? {};
+  const { restaurant_id, location_id, access_token, refresh_token, expires_in } = req.body ?? {};
 
   if (!restaurant_id || !location_id || !access_token) {
     return res.status(400).json({
@@ -43,13 +45,21 @@ router.post('/connect', async (req: Request, res: Response) => {
     });
   }
 
+  const updates: Record<string, unknown> = {
+    square_location_id: location_id,
+    square_access_token: encryptToken(access_token),
+    pos_connected: true,
+  };
+  if (refresh_token) updates.square_refresh_token = encryptToken(refresh_token);
+  if (expires_in) {
+    updates.square_token_expires_at = new Date(
+      Date.now() + Number(expires_in) * 1000,
+    ).toISOString();
+  }
+
   const { data, error } = await supabase
     .from('restaurants')
-    .update({
-      square_location_id: location_id,
-      square_access_token: encryptToken(access_token),
-      pos_connected: true,
-    })
+    .update(updates)
     .eq('id', restaurant_id)
     .eq('user_id', userId)
     .select('id, square_location_id, pos_connected')

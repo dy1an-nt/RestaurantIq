@@ -10,6 +10,11 @@
  * syncs can upsert idempotently.
  */
 
+import { MenuItemRow, OrderRow, OrderItemRow, NormalizedOrder } from '../ingestion/types';
+
+// Re-export the shared row shapes so existing importers of this module keep working.
+export { MenuItemRow, OrderRow, OrderItemRow };
+
 type SquareCatalogObject = any;
 type SquareOrder = any;
 type SquareOrderLineItem = any;
@@ -19,31 +24,6 @@ const toCents = (amount: bigint | number | null | undefined): number => {
   if (amount === null || amount === undefined) return 0;
   return typeof amount === 'bigint' ? Number(amount) : Number(amount);
 };
-
-export interface MenuItemRow {
-  restaurant_id: string;
-  name: string;
-  category: string;
-  price_cents: number;
-  cost_cents: number;
-  source: 'square';
-  external_id?: string;
-}
-
-export interface OrderRow {
-  restaurant_id: string;
-  source: 'square';
-  total_cents: number;
-  ordered_at: string; // ISO timestamp
-  external_id?: string;
-}
-
-export interface OrderItemRow {
-  // order_id is filled in after the order row is inserted
-  menu_item_external_id: string | null;
-  quantity: number;
-  unit_price_cents: number;
-}
 
 /**
  * normalizeCatalogItem(squareItem) → menu_item row
@@ -90,7 +70,7 @@ export const normalizeCatalogItem = (
 export const normalizeOrder = (
   squareOrder: SquareOrder,
   restaurantId: string,
-): { order: OrderRow; items: OrderItemRow[] } | null => {
+): NormalizedOrder | null => {
   if (!squareOrder?.id) return null;
 
   const totalCents = toCents(squareOrder.totalMoney?.amount);

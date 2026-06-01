@@ -39,6 +39,7 @@ export const createRestaurant = async (req: AuthRequest, res: Response) => {
       .single();
 
     if (error) {
+      // Postgres unique_violation → a restaurant already exists for this owner.
       if (error.code === '23505') {
         return res.status(409).json({ data: null, error: 'A restaurant already exists for this account' });
       }
@@ -47,7 +48,9 @@ export const createRestaurant = async (req: AuthRequest, res: Response) => {
 
     res.json({ data, error: null });
   } catch (error: any) {
-    res.status(500).json({ data: null, error: error.message });
+    // Log the real error server-side; never leak raw DB internals to clients.
+    console.error('[restaurants] create failed', error);
+    res.status(500).json({ data: null, error: 'Failed to create restaurant' });
   }
 };
 
@@ -72,7 +75,9 @@ export const getMyRestaurant = async (req: AuthRequest, res: Response) => {
 
     res.json({ data, error: null });
   } catch (error: any) {
-    res.status(500).json({ data: null, error: error.message });
+    // Log the real error server-side; never leak raw DB internals to clients.
+    console.error('[restaurants] getMyRestaurant failed', error);
+    res.status(500).json({ data: null, error: 'Failed to load restaurant' });
   }
 };
 
@@ -94,7 +99,9 @@ export const getRestaurant = async (req: AuthRequest, res: Response) => {
 
     res.json({ data, error: null });
   } catch (error: any) {
-    res.status(500).json({ data: null, error: error.message });
+    // Log the real error server-side; never leak raw DB internals to clients.
+    console.error('[restaurants] getRestaurant failed', error);
+    res.status(500).json({ data: null, error: 'Failed to load restaurant' });
   }
 };
 
@@ -123,6 +130,8 @@ export const updateRestaurant = async (req: AuthRequest, res: Response) => {
 
     res.json({ data, error: null });
   } catch (error: any) {
-    res.status(500).json({ data: null, error: error.message });
+    // Log the real error server-side; never leak raw DB internals to clients.
+    console.error('[restaurants] updateRestaurant failed', error);
+    res.status(500).json({ data: null, error: 'Failed to update restaurant' });
   }
 };

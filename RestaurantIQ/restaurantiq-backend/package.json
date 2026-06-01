@@ -9,6 +9,7 @@
     "build": "tsc",
     "seed": "ts-node src/seed.ts",
     "seed:square": "ts-node src/scripts/seedSquareSandbox.ts",
+    "seed:doordash": "ts-node src/scripts/seedDoorDashSandbox.ts",
     "test": "jest"
   },
   "dependencies": {
@@ -25,11 +26,12 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/jest": "^29.5.8",
+    "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.10.0",
     "@types/pg": "^8.10.9",
     "jest": "^29.7.0",
+    "ts-jest": "^29.4.11",
     "ts-node": "^10.9.1",
     "typescript": "^5.3.3"
   }

@@ -16,11 +16,21 @@ interface MarginItem {
   profit_30d_cents: number;
 }
 
+interface MissingCostItem {
+  id: string;
+  name: string;
+  price_cents: number;
+}
+
 interface MarginSummary {
   averageMarginPercent: number;
   totalProfitCents: number;
   worstItem: { name: string; margin_percent: number } | null;
   bestItem: { name: string; margin_percent: number } | null;
+  analyzedItems: number;
+  missingCosts: number;
+  negativeMarginItems: number;
+  healthyItems: number;
 }
 
 interface MarginsData {
@@ -29,6 +39,7 @@ interface MarginsData {
   repricingCandidates: MarginItem[];
   lowVelocityPremiumItems: MarginItem[];
   healthyPerformers: MarginItem[];
+  missingCostItems: MissingCostItem[];
 }
 
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -170,6 +181,7 @@ const MarginAnalysis = () => {
     data.repricingCandidates.length === 0 &&
     data.lowVelocityPremiumItems.length === 0 &&
     data.healthyPerformers.length === 0 &&
+    data.missingCostItems.length === 0 &&
     data.summary.totalProfitCents === 0 &&
     data.summary.averageMarginPercent === 0;
 
@@ -273,6 +285,18 @@ const MarginAnalysis = () => {
                 </p>
               )}
             </div>
+
+            <div className="bg-white rounded-xl shadow p-5">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Missing Costs</p>
+              <p
+                className={`text-2xl font-bold mt-1 ${
+                  data.summary.missingCosts > 0 ? 'text-yellow-600' : 'text-gray-900'
+                }`}
+              >
+                {data.summary.missingCosts}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">items without cost data</p>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl shadow p-6">
@@ -337,6 +361,44 @@ const MarginAnalysis = () => {
             accent="green"
             emptyText="Not enough data to identify healthy performers yet."
           />
+
+          {data.missingCostItems.length > 0 && (
+            <div className="bg-white rounded-xl shadow overflow-hidden">
+              <div className="px-6 py-4 border-l-4 border-gray-300 flex items-start justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">Missing Cost Items</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Add item costs to unlock profitability analytics.
+                  </p>
+                </div>
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                  {data.missingCostItems.length} items
+                </span>
+              </div>
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.missingCostItems.map((item) => (
+                    <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{fmt(item.price_cents)}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                          Cost Missing
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>
