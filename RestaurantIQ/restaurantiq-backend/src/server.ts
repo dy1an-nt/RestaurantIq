@@ -7,9 +7,11 @@ import menuItemsRouter from './routes/menuItems';
 import insightsRouter from './routes/insights';
 import squareIntegrationRouter from './routes/integrations/square';
 import doordashIntegrationRouter from './routes/integrations/doordash';
+import syncStatusRouter from './routes/integrations/syncStatus';
 import alertsRouter from './routes/alerts';
 import analyticsRouter from './routes/analytics';
 import marketingRouter from './routes/marketing';
+import { startSyncScheduler } from './services/syncScheduler';
 
 dotenv.config();
 
@@ -25,10 +27,14 @@ app.use('/api/restaurant', restaurantRoutes);
 app.use('/api/insights', insightsRouter);
 app.use('/api/integrations/square', squareIntegrationRouter);
 app.use('/api/integrations/doordash', doordashIntegrationRouter);
+app.use('/api/integrations', syncStatusRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/marketing', marketingRouter);
 
 app.listen(port, () => {
   console.error(`RestaurantIQ API running on port ${port}`);
+  // Start automated integration syncing once the HTTP listener is up so
+  // analytics stay current without anyone pressing "Run sync" (Sprint L).
+  startSyncScheduler();
 });

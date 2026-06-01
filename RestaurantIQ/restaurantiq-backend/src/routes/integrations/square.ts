@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../../db';
 import { authMiddleware } from '../../middleware/auth';
-import { ingestSquare } from '../../services/square/ingestSquare';
 import { isMockMode } from '../../services/square/squareClient';
 import { encryptToken } from '../../lib/tokenCrypto';
+import { syncIntegration } from '../../services/syncScheduler';
+
+const SQUARE_CREDS_SELECT =
+  'id, pos_connected, square_location_id, square_access_token, square_refresh_token, square_token_expires_at, delivery_connected, doordash_store_id, doordash_access_token, doordash_refresh_token, doordash_token_expires_at';
 
 const router = Router();
 
@@ -80,8 +83,11 @@ router.post('/connect', async (req: Request, res: Response) => {
  * POST /api/integrations/square/sync
  * Body: { restaurant_id: string }
  *
- * Triggers a catalog + orders pull for the given restaurant. Returns a count
- * summary. In USE_MOCK mode this is a no-op that resolves immediately.
+ * Manually triggers a catalog + orders pull. Routed through the SHARED
+ * syncIntegration path (services/syncScheduler) so a manual press obeys the same
+ * per-restaurant lock and status bookkeeping as the scheduler — it can never
+ * duplicate an in-flight scheduled run (returns 409 instead). In USE_MOCK mode
+ * the ingest is a no-op that resolves immediately.
  */
 router.post('/sync', async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
@@ -94,7 +100,7 @@ router.post('/sync', async (req: Request, res: Response) => {
 
   const { data: owned, error: ownerErr } = await supabase
     .from('restaurants')
-    .select('id')
+    .select(SQUARE_CREDS_SELECT)
     .eq('id', restaurant_id)
     .eq('user_id', userId)
     .maybeSingle();
@@ -107,25 +113,34 @@ router.post('/sync', async (req: Request, res: Response) => {
     return res.status(403).json({ data: null, error: 'Restaurant not found or access denied' });
   }
 
-  try {
-    const result = await Promise.race([
-      ingestSquare(restaurant_id),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error('Sync timed out — try again')),
-          60_000,
-        ),
-      ),
-    ]);
-    return res.json({ data: result, error: null });
-  } catch (err: any) {
-    const timedOut = (err.message as string | undefined)?.includes('timed out') ?? false;
-    console.error(`Square sync ${timedOut ? 'timed out' : 'failed'}:`, err.message);
-    return res.status(timedOut ? 504 : 500).json({
+  const outcome = await syncIntegration(owned as any, 'square', 'manual');
+
+  if (outcome.skipped && outcome.reason === 'locked') {
+    return res
+      .status(409)
+      .json({ data: null, error: 'A sync is already in progress for this integration.' });
+  }
+  if (outcome.skipped) {
+    return res.status(409).json({
       data: null,
-      error: err.message ?? 'Square sync failed',
+      error:
+        outcome.reason === 'token_expired'
+          ? 'Square access expired — reconnect required.'
+          : 'Square is not connected.',
     });
   }
+  if (!outcome.ok) {
+    return res.status(502).json({ data: null, error: outcome.error ?? 'Square sync failed' });
+  }
+
+  return res.json({
+    data: {
+      ok: true,
+      catalogCount: outcome.catalogCount ?? 0,
+      orderCount: outcome.orderCount ?? 0,
+    },
+    error: null,
+  });
 });
 
 export default router;

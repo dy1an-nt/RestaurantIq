@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
@@ -15,6 +15,48 @@ interface IntegrationStatus {
   mock: boolean;
   environment: string;
 }
+
+type SyncStatus =
+  | 'connected'
+  | 'syncing'
+  | 'success'
+  | 'failed'
+  | 'disconnected'
+  | 'token_expired';
+
+interface ProviderHealth {
+  provider: 'square' | 'doordash';
+  connected: boolean;
+  status: SyncStatus;
+  last_success_at: string | null;
+  last_attempted_at: string | null;
+  last_error: string | null;
+}
+
+/** Human-readable "x minutes ago" for a timestamp, or a fallback string. */
+const relativeTime = (iso: string | null): string => {
+  if (!iso) return 'never';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 'never';
+  const diffMs = Date.now() - then;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
+/** Status → pill tone + label for the sync-health row. */
+const STATUS_DISPLAY: Record<SyncStatus, { tone: 'green' | 'gray' | 'yellow' | 'red'; label: string }> = {
+  success: { tone: 'green', label: 'Up to date' },
+  connected: { tone: 'gray', label: 'Connected' },
+  syncing: { tone: 'yellow', label: 'Syncing…' },
+  failed: { tone: 'red', label: 'Sync failed' },
+  token_expired: { tone: 'red', label: 'Reconnect required' },
+  disconnected: { tone: 'gray', label: 'Disconnected' },
+};
 
 const authedFetch = async (url: string, init: RequestInit = {}) => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -68,6 +110,10 @@ interface IntegrationConfig {
   connectedLabel: string | null;
   /** Whether to render a disconnect button (provider must back /disconnect). */
   supportsDisconnect?: boolean;
+  /** Latest sync health for this provider (from /api/integrations/sync-status). */
+  health: ProviderHealth | null;
+  /** Re-fetch sync health after a connect/sync/disconnect changes it. */
+  onHealthChange: () => void;
 }
 
 const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
@@ -123,6 +169,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
       setConnectMsg({ tone: 'ok', text: `Connected. ${config.title} credentials saved.` });
       setAccessToken(''); // don't keep token in DOM
       await refresh();
+      config.onHealthChange();
     } catch (err: any) {
       setConnectMsg({ tone: 'err', text: err.message });
     } finally {
@@ -147,6 +194,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
       setSyncErr(err.message);
     } finally {
       setSyncBusy(false);
+      config.onHealthChange();
     }
   };
 
@@ -164,6 +212,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
       setSyncResult(null);
       setConnectMsg({ tone: 'ok', text: `${config.title} disconnected.` });
       await refresh();
+      config.onHealthChange();
     } catch (err: any) {
       setConnectMsg({ tone: 'err', text: err.message });
     } finally {
@@ -186,6 +235,37 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
           </Pill>
         )}
       </div>
+
+      {connected && config.health && (
+        <div className="rounded-md bg-gray-50 border border-gray-100 p-3 space-y-1.5 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600">Sync health</span>
+            <Pill tone={STATUS_DISPLAY[config.health.status].tone}>
+              {STATUS_DISPLAY[config.health.status].label}
+            </Pill>
+          </div>
+          <div className="flex items-center justify-between text-gray-700">
+            <span className="text-gray-500">Last successful sync</span>
+            <span title={config.health.last_success_at ?? undefined}>
+              {relativeTime(config.health.last_success_at)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-gray-700">
+            <span className="text-gray-500">Last attempt</span>
+            <span title={config.health.last_attempted_at ?? undefined}>
+              {relativeTime(config.health.last_attempted_at)}
+            </span>
+          </div>
+          {config.health.last_error && (
+            <div className="text-xs text-red-600 pt-1 border-t border-gray-100">
+              {config.health.last_error}
+            </div>
+          )}
+          <p className="text-xs text-gray-400 pt-1">
+            Syncs run automatically in the background — no need to press a button.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleConnect} className="space-y-3 pt-2">
         <div>
@@ -280,6 +360,32 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
 const Integrations = () => {
   const { restaurant } = useRestaurant();
 
+  const [health, setHealth] = useState<Record<'square' | 'doordash', ProviderHealth> | null>(null);
+
+  const fetchHealth = useCallback(async () => {
+    if (!restaurant) return;
+    try {
+      const res = await authedFetch('/api/integrations/sync-status');
+      const body = await res.json();
+      if (res.ok && !body.error) {
+        setHealth(body.data as Record<'square' | 'doordash', ProviderHealth>);
+      }
+    } catch {
+      /* health is best-effort — leave prior value on failure */
+    }
+  }, [restaurant]);
+
+  useEffect(() => {
+    fetchHealth();
+  }, [fetchHealth]);
+
+  // Poll periodically so background (scheduled) syncs surface without a reload.
+  useEffect(() => {
+    if (!restaurant) return;
+    const id = setInterval(fetchHealth, 30_000);
+    return () => clearInterval(id);
+  }, [restaurant, fetchHealth]);
+
   const squareConfig: IntegrationConfig = {
     title: 'Square',
     basePath: '/api/integrations/square',
@@ -295,6 +401,8 @@ const Integrations = () => {
     ),
     connected: !!restaurant?.square_location_id,
     connectedLabel: restaurant?.square_location_id ?? null,
+    health: health?.square ?? null,
+    onHealthChange: fetchHealth,
   };
 
   const doordashConfig: IntegrationConfig = {
@@ -313,6 +421,8 @@ const Integrations = () => {
     connected: !!restaurant?.doordash_store_id,
     connectedLabel: restaurant?.doordash_store_id ?? null,
     supportsDisconnect: true,
+    health: health?.doordash ?? null,
+    onHealthChange: fetchHealth,
   };
 
   return (
