@@ -9,6 +9,7 @@ const navItems = [
   { label: 'Alerts', path: '/alerts', icon: '🔔' },
   { label: 'Marketing', path: '/marketing', icon: '📢' },
   { label: 'Integrations', path: '/integrations', icon: '🔌' },
+  { label: 'Sync Health', path: '/sync-health', icon: '🩺' },
 ];
 
 const Sidebar = () => {

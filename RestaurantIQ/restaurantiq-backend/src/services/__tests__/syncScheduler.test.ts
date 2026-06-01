@@ -15,7 +15,8 @@ const mockState: {
   lockResults: boolean[];
   updates: Array<{ table: string; payload: any }>;
   upserts: Array<{ table: string; payload: any; opts: any }>;
-} = { restaurants: [], lockResults: [], updates: [], upserts: [] };
+  inserts: Array<{ table: string; payload: any }>;
+} = { restaurants: [], lockResults: [], updates: [], upserts: [], inserts: [] };
 
 jest.mock('../../db', () => {
   const makeBuilder = (table: string) => {
@@ -37,6 +38,16 @@ jest.mock('../../db', () => {
         this._op = 'update';
         this._payload = payload;
         return this;
+      },
+      insert(payload: any) {
+        this._op = 'insert';
+        this._payload = payload;
+        mockState.inserts.push({ table, payload });
+        return this;
+      },
+      single() {
+        // After insert, return the inserted row with a fake id.
+        return Promise.resolve({ data: { id: 'job-mock-id' }, error: null });
       },
       eq() {
         return this;
@@ -61,6 +72,7 @@ jest.mock('../../db', () => {
           return { data: null, error: null };
         }
         if (this._op === 'upsert') return { error: null };
+        if (this._op === 'insert') return { data: { id: 'job-mock-id' }, error: null };
         return { data: null, error: null };
       },
     };
@@ -102,14 +114,17 @@ const squareRow = (over: Record<string, any> = {}) => ({
   ...over,
 });
 
-const lastUpdate = (predicate: (p: any) => boolean) =>
-  [...mockState.updates].reverse().find((u) => predicate(u.payload))?.payload;
+const lastUpdate = (predicate: (p: any) => boolean, table?: string) =>
+  [...mockState.updates]
+    .reverse()
+    .find((u) => predicate(u.payload) && (!table || u.table === table))?.payload;
 
 beforeEach(() => {
   mockState.restaurants = [];
   mockState.lockResults = [];
   mockState.updates = [];
   mockState.upserts = [];
+  mockState.inserts = [];
   ingestSquareMock.mockReset();
   ingestDoorDashMock.mockReset();
   squareMock.mockReturnValue(false);
@@ -168,7 +183,8 @@ describe('syncIntegration — status tracking', () => {
     expect(ingestSquareMock).toHaveBeenCalledWith('r1');
     expect(outcome).toMatchObject({ ok: true, status: 'success', catalogCount: 4, orderCount: 9 });
 
-    const success = lastUpdate((p) => p.status === 'success');
+    // Look specifically at the integration_sync_status table update (releaseLock).
+    const success = lastUpdate((p) => p.status === 'success', 'integration_sync_status');
     expect(success).toBeDefined();
     expect(success.locked_at).toBeNull(); // lock released
     expect(success.last_error).toBeNull(); // prior failures cleared
@@ -181,7 +197,7 @@ describe('syncIntegration — status tracking', () => {
     const outcome = await syncIntegration(squareRow(), 'square', 'scheduled');
 
     expect(outcome).toMatchObject({ ok: false, status: 'failed', error: 'Square API 500' });
-    const failed = lastUpdate((p) => p.status === 'failed');
+    const failed = lastUpdate((p) => p.status === 'failed', 'integration_sync_status');
     expect(failed.last_error).toBe('Square API 500');
     expect(failed.locked_at).toBeNull(); // lock released on failure
   });
@@ -225,6 +241,69 @@ describe('syncIntegration — overlap prevention', () => {
 
     expect(ingestSquareMock).not.toHaveBeenCalled();
     expect(outcome).toMatchObject({ skipped: true, reason: 'locked' });
+  });
+});
+
+/**
+ * Regression coverage for the Sprint L+ retry pipeline — these guard the two
+ * bugs QA caught: (1) a tautological permanent-failure branch that marked every
+ * failure failed_permanently (dead retry path), and (2) dispatched retries
+ * spawning a new job row instead of consuming their own, looping forever.
+ */
+describe('syncIntegration — durable retry pipeline', () => {
+  const syncJobUpdate = (predicate: (p: any) => boolean) =>
+    lastUpdate(predicate, 'sync_jobs');
+
+  it('schedules a backoff retry (pending_retry) for a transient failure', async () => {
+    ingestSquareMock.mockRejectedValue(new Error('Square API 500'));
+
+    const outcome = await syncIntegration(squareRow(), 'square', 'scheduled');
+
+    expect(outcome).toMatchObject({ ok: false, status: 'failed' });
+    const retry = syncJobUpdate((p) => p.status === 'pending_retry');
+    expect(retry).toBeDefined();
+    expect(retry.next_retry_at).not.toBeNull(); // a retry was actually scheduled
+    expect(retry.retry_count).toBe(1);
+    // It must NOT have been marked permanently failed.
+    expect(syncJobUpdate((p) => p.status === 'failed_permanently')).toBeUndefined();
+  });
+
+  it('marks an auth/credential failure failed_permanently (no retry)', async () => {
+    ingestSquareMock.mockRejectedValue(
+      new Error('Square integration disconnected — reconnect required.'),
+    );
+
+    const outcome = await syncIntegration(squareRow(), 'square', 'scheduled');
+
+    expect(outcome.status).toBe('token_expired');
+    const perm = syncJobUpdate((p) => p.status === 'failed_permanently');
+    expect(perm).toBeDefined();
+    expect(perm.next_retry_at).toBeNull();
+    expect(syncJobUpdate((p) => p.status === 'pending_retry')).toBeUndefined();
+  });
+
+  it('marks failed_permanently once the retry budget is exhausted', async () => {
+    ingestSquareMock.mockRejectedValue(new Error('Square API 500'));
+
+    // retryCount=5 means this is the 6th attempt → beyond MAX_SYNC_RETRIES.
+    await syncIntegration(squareRow(), 'square', 'retry', 5, 'existing-job-1');
+
+    const perm = syncJobUpdate((p) => p.status === 'failed_permanently');
+    expect(perm).toBeDefined();
+    expect(perm.next_retry_at).toBeNull();
+  });
+
+  it('a dispatched retry reuses its own job row instead of creating a new one', async () => {
+    ingestSquareMock.mockResolvedValue({ ok: true, catalogCount: 1, orderCount: 1 });
+
+    await syncIntegration(squareRow(), 'square', 'retry', 1, 'existing-job-1');
+
+    // No new sync_jobs row was inserted — the existing one was continued.
+    const jobInserts = mockState.inserts.filter((i) => i.table === 'sync_jobs');
+    expect(jobInserts).toHaveLength(0);
+    // The existing row was flipped to running (leaves pending_retry → not re-due).
+    expect(syncJobUpdate((p) => p.status === 'running')).toBeDefined();
+    expect(syncJobUpdate((p) => p.status === 'success')).toBeDefined();
   });
 });
 

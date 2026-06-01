@@ -17,6 +17,7 @@
  *   - isolate failures so one restaurant can never break another
  *
  * Lock & status state live in the integration_sync_status table (migration 018).
+ * Per-attempt audit rows live in sync_jobs (migration 019).
  */
 import { supabase } from '../db';
 import { OrderSource } from './ingestion/types';
@@ -24,6 +25,16 @@ import { ingestSquare } from './square/ingestSquare';
 import { ingestDoorDash } from './doordash/ingestDoorDash';
 import { isMockMode as squareMock } from './square/squareClient';
 import { isMockMode as doordashMock } from './doordash/doordashClient';
+import { logEvent } from './scheduler/logger';
+import {
+  createJob,
+  markRunning,
+  markSuccess,
+  markFailedOrRetry,
+  markSkipped,
+  JobTrigger,
+} from './scheduler/syncJobs';
+import { nextRetryDelayMs } from './scheduler/retry';
 
 export type Provider = OrderSource; // 'square' | 'doordash'
 
@@ -268,11 +279,23 @@ const isAuthError = (message: string): boolean =>
  *
  * Never throws — every failure is captured into the returned outcome and the
  * status table, so a caller iterating many integrations is fully isolated.
+ *
+ * Sprint L+ additions:
+ *   - Creates a sync_jobs row for every attempt (audit trail + retry state).
+ *   - Computes retry backoff for transient failures (not auth/disconnect).
+ *   - Accepts retryCount so retry dispatches increment the counter correctly.
+ *   - Accepts existingJobId so a dispatched retry CONTINUES its own sync_jobs
+ *     row rather than spawning a new one. This is what lets a retry leave the
+ *     pending_retry state: markRunning(existingJobId) flips the row to running,
+ *     so findDueRetryJobs no longer returns it. Without this the same retry row
+ *     stays "due" forever and re-dispatches on every tick.
  */
 export const syncIntegration = async (
   row: RestaurantRow,
   provider: Provider,
-  source: 'scheduled' | 'manual' = 'scheduled',
+  source: 'scheduled' | 'manual' | 'retry' = 'scheduled',
+  retryCount = 0,
+  existingJobId: string | null = null,
 ): Promise<SyncOutcome> => {
   const restaurantId = row.id;
   await ensureStatusRow(restaurantId, provider);
@@ -281,20 +304,34 @@ export const syncIntegration = async (
   const state = classifyIntegration(row, provider);
   if (state !== 'syncable') {
     await setStatus(restaurantId, provider, state);
-    console.error(
-      `[sync] skip ${JSON.stringify({ restaurantId, provider, source, reason: state })}`,
-    );
+    // A dispatched retry whose integration is now disconnected/expired must
+    // CONSUME its existing row (markSkipped → leaves pending_retry); otherwise
+    // create a fresh audit row.
+    const jobId =
+      existingJobId ?? (await createJob({ restaurantId, provider, trigger: source as JobTrigger }));
+    if (jobId) {
+      // Permanent skips (disconnected/token_expired) are marked permanently failed.
+      await markSkipped(jobId, { reason: state });
+    }
+    logEvent('SYNC_FAILED', { restaurantId, provider, source, reason: state, permanent: true });
     return { restaurantId, provider, status: state, ok: false, skipped: true, reason: state };
   }
 
   // 2. Acquire the lock — prevents overlapping runs.
   const locked = await acquireLock(restaurantId, provider);
   if (!locked) {
-    console.error(
-      `[sync] skip ${JSON.stringify({ restaurantId, provider, source, reason: 'locked' })}`,
-    );
+    logEvent('SYNC_FAILED', { restaurantId, provider, source, reason: 'locked' });
     return { restaurantId, provider, status: 'syncing', ok: false, skipped: true, reason: 'locked' };
   }
+  logEvent('LOCK_ACQUIRED', { restaurantId, provider, source });
+
+  // Continue the dispatched retry's own row, or create a fresh one now that the
+  // lock is held. markRunning flips a reused pending_retry row to running, so a
+  // consumed retry job no longer appears in findDueRetryJobs.
+  const jobId =
+    existingJobId ?? (await createJob({ restaurantId, provider, trigger: source as JobTrigger }));
+  if (jobId) await markRunning(jobId);
+  logEvent('SYNC_STARTED', { restaurantId, provider, source, retryCount, jobId });
 
   // 3. Run the provider ingest under a hard timeout; release the lock no matter what.
   const startedAt = Date.now();
@@ -305,17 +342,25 @@ export const syncIntegration = async (
         setTimeout(() => reject(new Error('Sync timed out')), SYNC_TIMEOUT_MS),
       ),
     ]);
+    const durationMs = Date.now() - startedAt;
     await releaseLock(restaurantId, provider, 'success', null);
-    console.error(
-      `[sync] ok ${JSON.stringify({
-        restaurantId,
-        provider,
-        source,
-        ms: Date.now() - startedAt,
+    logEvent('LOCK_RELEASED', { restaurantId, provider, source, status: 'success' });
+    if (jobId) {
+      await markSuccess(jobId, {
+        durationMs,
         catalogCount: result.catalogCount,
         orderCount: result.orderCount,
-      })}`,
-    );
+      });
+    }
+    logEvent('SYNC_COMPLETED', {
+      restaurantId,
+      provider,
+      source,
+      ms: durationMs,
+      catalogCount: result.catalogCount,
+      orderCount: result.orderCount,
+      jobId,
+    });
     return {
       restaurantId,
       provider,
@@ -326,18 +371,56 @@ export const syncIntegration = async (
     };
   } catch (err: any) {
     const message = err?.message ?? 'Sync failed';
-    const status: SyncStatus = isAuthError(message) ? 'token_expired' : 'failed';
+    const durationMs = Date.now() - startedAt;
+    const authFail = isAuthError(message);
+    const status: SyncStatus = authFail ? 'token_expired' : 'failed';
     await releaseLock(restaurantId, provider, status, message);
-    console.error(
-      `[sync] fail ${JSON.stringify({
-        restaurantId,
-        provider,
-        source,
-        ms: Date.now() - startedAt,
-        status,
-        error: message,
-      })}`,
-    );
+    logEvent('LOCK_RELEASED', { restaurantId, provider, source, status });
+
+    if (jobId) {
+      // The integration was 'syncable' at pre-flight, so a failure here is
+      // either an auth/credential failure that surfaced mid-sync (permanent —
+      // needs human re-auth, retrying would just hammer a dead token) or a
+      // transient error (provider 5xx, timeout, network) that should back off
+      // and retry until the budget is spent.
+      if (authFail) {
+        await markFailedOrRetry(jobId, {
+          retryCount: retryCount + 1,
+          error: message,
+          nextRetryAt: null, // permanent — no automatic retry
+        });
+      } else {
+        const nextAttempt = retryCount + 1;
+        const delayMs = nextRetryDelayMs(nextAttempt);
+        const nextRetryAt = delayMs !== null ? new Date(Date.now() + delayMs) : null;
+        await markFailedOrRetry(jobId, {
+          retryCount: nextAttempt,
+          error: message,
+          nextRetryAt, // null once the budget is exhausted → failed_permanently
+        });
+        if (nextRetryAt) {
+          logEvent('RETRY_SCHEDULED', {
+            restaurantId,
+            provider,
+            source,
+            retryCount: nextAttempt,
+            nextRetryAt: nextRetryAt.toISOString(),
+            delayMs,
+            jobId,
+          });
+        }
+      }
+    }
+
+    logEvent('SYNC_FAILED', {
+      restaurantId,
+      provider,
+      source,
+      ms: durationMs,
+      status,
+      error: message,
+      jobId,
+    });
     return { restaurantId, provider, status, ok: false, error: message };
   }
 };

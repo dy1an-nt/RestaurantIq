@@ -11,7 +11,7 @@ import syncStatusRouter from './routes/integrations/syncStatus';
 import alertsRouter from './routes/alerts';
 import analyticsRouter from './routes/analytics';
 import marketingRouter from './routes/marketing';
-import { startSyncScheduler } from './services/syncScheduler';
+import { startScheduler, stopScheduler } from './services/scheduler';
 
 dotenv.config();
 
@@ -34,7 +34,21 @@ app.use('/api/marketing', marketingRouter);
 
 app.listen(port, () => {
   console.error(`RestaurantIQ API running on port ${port}`);
-  // Start automated integration syncing once the HTTP listener is up so
-  // analytics stay current without anyone pressing "Run sync" (Sprint L).
-  startSyncScheduler();
+  // Start the distributed sync scheduler once the HTTP listener is up.
+  // The scheduler attempts leader election (Postgres advisory lock via pg.Client)
+  // and only dispatches syncs when this instance holds the lock (Sprint L+).
+  startScheduler();
 });
+
+// Graceful shutdown: release the advisory lock so a standby instance can take
+// over immediately instead of waiting for the stale-lock window.
+const shutdown = async (signal: string): Promise<void> => {
+  console.error(
+    JSON.stringify({ event: 'SHUTDOWN', ts: new Date().toISOString(), signal }),
+  );
+  await stopScheduler();
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
