@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { JWTPayload } from 'jose';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { createAiRateLimiter } from '../middleware/rateLimit';
 import { generateMarketingCopy } from '../services/marketingService';
 
 interface AuthRequest extends Request {
@@ -9,7 +10,10 @@ interface AuthRequest extends Request {
 }
 
 const router = Router();
+// Authenticate first so the rate limiter can key on the user id, then cap how
+// often this Claude-powered endpoint can be called (cost protection — Sprint N).
 router.use(authMiddleware);
+router.use(createAiRateLimiter());
 
 // ---------------------------------------------------------------------------
 // POST /api/marketing/generate
