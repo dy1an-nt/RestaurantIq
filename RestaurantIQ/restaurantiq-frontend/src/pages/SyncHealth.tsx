@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
 // ---------- types ----------------------------------------------------------
@@ -104,19 +104,6 @@ const jobStatusTone = (status: string): 'green' | 'gray' | 'yellow' | 'red' => {
   if (status === 'running' || status === 'syncing' || status === 'pending_retry') return 'yellow';
   if (status === 'failed' || status === 'error' || status === 'failed_permanently') return 'red';
   return 'gray';
-};
-
-const authedFetch = async (url: string, init: RequestInit = {}) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not signed in');
-  return fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
 };
 
 // ---------- shared UI primitives -------------------------------------------
@@ -343,7 +330,7 @@ const SyncHealth = () => {
     if (!restaurant) return;
     if (isInitial) setLoading(true);
     try {
-      const res = await authedFetch('/api/integrations/sync-metrics');
+      const res = await apiFetch('/api/integrations/sync-metrics');
       const body = await res.json();
       if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`);
       setData(body.data as SyncMetricsData);
@@ -366,7 +353,7 @@ const SyncHealth = () => {
     (async () => {
       setLoading(true);
       try {
-        const res = await authedFetch('/api/integrations/sync-metrics');
+        const res = await apiFetch('/api/integrations/sync-metrics');
         const body = await res.json();
         if (cancelled) return;
         if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`);

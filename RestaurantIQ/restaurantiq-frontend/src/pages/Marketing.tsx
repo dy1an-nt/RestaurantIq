@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
 interface MenuItem {
@@ -170,15 +170,9 @@ const Marketing = () => {
     setMenuItemsError(null);
 
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        if (!cancelled) setMenuItemsError('Not signed in');
-        return;
-      }
       try {
-        const res = await fetch(`/api/restaurants/${restaurant.id}/menu-items`, {
+        const res = await apiFetch(`/api/restaurants/${restaurant.id}/menu-items`, {
           signal: controller.signal,
-          headers: { Authorization: `Bearer ${session.access_token}` },
         });
         const body = await res.json() as { data: MenuItem[]; error: string | null };
         if (!res.ok || body.error) throw new Error(body.error ?? `Request failed (${res.status})`);
@@ -209,15 +203,8 @@ const Marketing = () => {
     setResult(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not signed in');
-
-      const res = await fetch('/api/marketing/generate', {
+      const res = await apiFetch('/api/marketing/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
         body: JSON.stringify({ menuItemId: selectedItemId, tone, platform }),
       });
       const body = await res.json() as { data: MarketingResult; error: string | null };

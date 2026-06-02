@@ -1,20 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
-
-const authedFetch = async (url: string, init: RequestInit = {}) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not signed in');
-  return fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
-};
 
 const STEPS = ['Create Restaurant', 'Connect Square', 'Import Data'] as const;
 
@@ -100,7 +87,7 @@ const Onboarding = () => {
     setStep1Loading(true);
     setStep1Error('');
     try {
-      const res = await authedFetch('/api/restaurant', {
+      const res = await apiFetch('/api/restaurant', {
         method: 'POST',
         body: JSON.stringify({ name: restaurantName, location }),
       });
@@ -121,7 +108,7 @@ const Onboarding = () => {
     setStep2Loading(true);
     setStep2Error('');
     try {
-      const res = await authedFetch('/api/integrations/square/connect', {
+      const res = await apiFetch('/api/integrations/square/connect', {
         method: 'POST',
         body: JSON.stringify({
           restaurant_id: restaurant.id,
@@ -147,7 +134,7 @@ const Onboarding = () => {
     setSyncError('');
     setSyncSuccess(null);
     try {
-      const res = await authedFetch('/api/integrations/square/sync', {
+      const res = await apiFetch('/api/integrations/square/sync', {
         method: 'POST',
         body: JSON.stringify({ restaurant_id: restaurant.id }),
       });

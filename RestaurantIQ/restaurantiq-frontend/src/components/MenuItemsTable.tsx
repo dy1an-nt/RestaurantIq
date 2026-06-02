@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { useRestaurant } from './restaurant/RestaurantContext';
 import EditMenuItemModal, { MenuItemPatch } from './EditMenuItemModal';
 
@@ -92,16 +92,9 @@ const MenuItemsTable = () => {
     setError(null);
 
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        if (!cancelled) setError('Not signed in');
-        return;
-      }
-
       try {
-        const res = await fetch(`/api/restaurants/${restaurant.id}/menu-items`, {
+        const res = await apiFetch(`/api/restaurants/${restaurant.id}/menu-items`, {
           signal: controller.signal,
-          headers: { Authorization: `Bearer ${session.access_token}` },
         });
         const body = await res.json();
         if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`);

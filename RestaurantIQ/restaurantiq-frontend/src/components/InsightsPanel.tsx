@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { apiFetch } from '../lib/api';
 import { useAuth } from './auth/AuthContext';
 import { useRestaurant } from './restaurant/RestaurantContext';
 
@@ -150,8 +151,7 @@ const InsightsPanel = () => {
 
     (async () => {
       try {
-        const res = await fetch('/api/insights', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
+        const res = await apiFetch('/api/insights', {
           signal: controller.signal,
         });
 

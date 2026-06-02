@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import RevenueTrendChart from '../components/charts/RevenueTrendChart';
 import TopItemsChart from '../components/charts/TopItemsChart';
 import SalesHeatmap from '../components/charts/SalesHeatmap';
@@ -37,15 +37,7 @@ const Analytics = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async (signal: AbortSignal) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not signed in');
-
-    const res = await fetch('/api/analytics/dashboard', {
-      signal,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
+    const res = await apiFetch('/api/analytics/dashboard', { signal });
     const body = await res.json() as { data: AnalyticsDashboard; error: string | null };
     if (!res.ok || body.error) throw new Error(body.error ?? `Request failed (${res.status})`);
     return body.data;

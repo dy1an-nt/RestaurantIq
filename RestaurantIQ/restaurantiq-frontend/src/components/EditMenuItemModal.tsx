@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 
 export interface MenuItemPatch {
   id: string;
@@ -132,18 +132,11 @@ const EditMenuItemModal = ({ item, restaurantId, onClose, onSaved }: Props) => {
     abortRef.current = controller;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not signed in');
-
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/restaurants/${restaurantId}/menu-items/${item.id}`,
         {
           method: 'PATCH',
           signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
           body: JSON.stringify(patch),
         }
       );

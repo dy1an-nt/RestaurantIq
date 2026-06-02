@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 
 interface MarginItem {
   id: string;
@@ -126,15 +126,7 @@ const MarginAnalysis = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMargins = useCallback(async (signal: AbortSignal) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not signed in');
-
-    const res = await fetch('/api/analytics/margins', {
-      signal,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
+    const res = await apiFetch('/api/analytics/margins', { signal });
     const body = await res.json() as { data: MarginsData; error: string | null };
     if (!res.ok || body.error) throw new Error(body.error ?? `Request failed (${res.status})`);
     return body.data;

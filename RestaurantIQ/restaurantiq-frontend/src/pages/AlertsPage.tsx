@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api';
 import { useAuth } from '../components/auth/AuthContext';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
@@ -131,8 +132,7 @@ const AlertsPage = () => {
 
     (async () => {
       try {
-        const res = await fetch('/api/alerts', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
+        const res = await apiFetch('/api/alerts', {
           signal: controller.signal,
         });
 
@@ -188,9 +188,8 @@ const AlertsPage = () => {
     });
 
     try {
-      const res = await fetch(`/api/alerts/${id}/read`, {
+      const res = await apiFetch(`/api/alerts/${id}/read`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const body: { data: { id: string } | null; error: string | null } = await res.json();
       if (!res.ok || body.error) {
@@ -221,9 +220,8 @@ const AlertsPage = () => {
     });
 
     try {
-      const res = await fetch('/api/alerts/read-all', {
+      const res = await apiFetch('/api/alerts/read-all', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const body: { data: { updated: number } | null; error: string | null } = await res.json();
       if (!res.ok || body.error) {

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { apiFetch } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 
 export interface Restaurant {
@@ -41,9 +42,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/restaurant/me', {
-        headers: { Authorization: `Bearer ${currentSession.access_token}` },
-      });
+      const res = await apiFetch('/api/restaurant/me');
       if (res.status === 404) {
         setRestaurant(null);
       } else if (res.ok) {
@@ -72,9 +71,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       setLoading(true);
       try {
-        const res = await fetch('/api/restaurant/me', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
+        const res = await apiFetch('/api/restaurant/me');
         if (cancelled) return;
         if (res.status === 404) {
           setRestaurant(null);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
 interface SyncResult {
@@ -56,19 +56,6 @@ const STATUS_DISPLAY: Record<SyncStatus, { tone: 'green' | 'gray' | 'yellow' | '
   failed: { tone: 'red', label: 'Sync failed' },
   token_expired: { tone: 'red', label: 'Reconnect required' },
   disconnected: { tone: 'gray', label: 'Disconnected' },
-};
-
-const authedFetch = async (url: string, init: RequestInit = {}) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not signed in');
-  return fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
 };
 
 const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -140,7 +127,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await authedFetch(`${config.basePath}/status`);
+        const res = await apiFetch(`${config.basePath}/status`);
         const body = await res.json();
         if (!cancelled && res.ok && !body.error) setStatus(body.data as IntegrationStatus);
       } catch {
@@ -156,7 +143,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
     setConnectBusy(true);
     setConnectMsg(null);
     try {
-      const res = await authedFetch(`${config.basePath}/connect`, {
+      const res = await apiFetch(`${config.basePath}/connect`, {
         method: 'POST',
         body: JSON.stringify({
           restaurant_id: restaurant.id,
@@ -183,7 +170,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
     setSyncErr(null);
     setSyncResult(null);
     try {
-      const res = await authedFetch(`${config.basePath}/sync`, {
+      const res = await apiFetch(`${config.basePath}/sync`, {
         method: 'POST',
         body: JSON.stringify({ restaurant_id: restaurant.id }),
       });
@@ -203,7 +190,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
     setDisconnectBusy(true);
     setConnectMsg(null);
     try {
-      const res = await authedFetch(`${config.basePath}/disconnect`, {
+      const res = await apiFetch(`${config.basePath}/disconnect`, {
         method: 'POST',
         body: JSON.stringify({ restaurant_id: restaurant.id }),
       });
@@ -365,7 +352,7 @@ const Integrations = () => {
   const fetchHealth = useCallback(async () => {
     if (!restaurant) return;
     try {
-      const res = await authedFetch('/api/integrations/sync-status');
+      const res = await apiFetch('/api/integrations/sync-status');
       const body = await res.json();
       if (res.ok && !body.error) {
         setHealth(body.data as Record<'square' | 'doordash', ProviderHealth>);

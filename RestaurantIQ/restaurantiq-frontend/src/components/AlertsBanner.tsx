@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../lib/api';
 import { useAuth } from './auth/AuthContext';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -63,8 +64,7 @@ const AlertsBanner = () => {
 
     (async () => {
       try {
-        const res = await fetch('/api/alerts', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
+        const res = await apiFetch('/api/alerts', {
           signal: controller.signal,
         });
 
@@ -108,9 +108,8 @@ const AlertsBanner = () => {
     setUnreadCount(0);
 
     try {
-      const res = await fetch('/api/alerts/read-all', {
+      const res = await apiFetch('/api/alerts/read-all', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const body: { data: unknown; error: string | null } = await res.json();
 
