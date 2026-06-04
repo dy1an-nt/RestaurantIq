@@ -56,7 +56,7 @@ interface CategorySectionProps {
   title: string;
   description: string;
   items: MarginItem[];
-  accent: 'red' | 'yellow' | 'green' | 'indigo';
+  accent: 'red' | 'yellow' | 'green' | 'navy';
   emptyText: string;
 }
 
@@ -64,14 +64,14 @@ const accentBorderClass: Record<CategorySectionProps['accent'], string> = {
   red: 'border-red-500',
   yellow: 'border-yellow-400',
   green: 'border-green-500',
-  indigo: 'border-indigo-500',
+  navy: 'border-navy-500',
 };
 
 const accentBadgeClass: Record<CategorySectionProps['accent'], string> = {
   red: 'bg-red-100 text-red-700',
   yellow: 'bg-yellow-100 text-yellow-700',
   green: 'bg-green-100 text-green-700',
-  indigo: 'bg-indigo-100 text-indigo-700',
+  navy: 'bg-navy-100 text-navy-800',
 };
 
 const CategorySection = ({ title, description, items, accent, emptyText }: CategorySectionProps) => (
@@ -230,7 +230,7 @@ const MarginAnalysis = () => {
           </p>
           <Link
             to="/"
-            className="inline-flex items-center mt-6 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+            className="inline-flex items-center mt-6 px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800"
           >
             Add cost data to your menu items
           </Link>
@@ -316,7 +316,7 @@ const MarginAnalysis = () => {
                     tick={{ fontSize: 11 }}
                   />
                   <Tooltip formatter={(v) => fmt(Number(v))} />
-                  <Bar dataKey="profit" fill="#4f46e5" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="profit" fill="#1e3a5f" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -342,7 +342,7 @@ const MarginAnalysis = () => {
             title="Low Visibility Premium Items"
             description="High-margin items with low sales — consider featuring on menus, promotions, or staff recommendations."
             items={data.lowVelocityPremiumItems}
-            accent="indigo"
+            accent="navy"
             emptyText="No underexposed premium items found."
           />
 

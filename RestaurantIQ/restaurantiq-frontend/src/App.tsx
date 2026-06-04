@@ -14,18 +14,23 @@ import Analytics from './pages/Analytics';
 import MarginAnalysis from './pages/MarginAnalysis';
 import SyncHealth from './pages/SyncHealth';
 import Sidebar from './components/Sidebar';
+import Topbar from './components/Topbar';
 import AlertsBanner from './components/AlertsBanner';
+import Landing from './pages/Landing';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
     <RequireRestaurant>
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="flex min-h-screen bg-canvas text-ink">
         <Sidebar />
-        <main className="flex-1 p-8 overflow-auto">
-          <AlertsBanner />
-          {children}
-        </main>
+        <div className="flex-1 flex flex-col min-w-0">
+          <Topbar />
+          <main className="flex-1 overflow-auto px-[30px] pt-7 pb-10">
+            <AlertsBanner />
+            {children}
+          </main>
+        </div>
       </div>
     </RequireRestaurant>
   </ProtectedRoute>
@@ -37,6 +42,7 @@ function App() {
       <RestaurantProvider>
         <Router>
           <Routes>
+            <Route path="/welcome" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />

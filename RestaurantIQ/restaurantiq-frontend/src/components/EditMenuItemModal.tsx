@@ -182,7 +182,7 @@ const EditMenuItemModal = ({ item, restaurantId, onClose, onSaved }: Props) => {
             value={name}
             disabled={saving}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
           />
           {nameError && <p className="mt-1 text-xs text-red-600">{nameError}</p>}
         </div>
@@ -199,7 +199,7 @@ const EditMenuItemModal = ({ item, restaurantId, onClose, onSaved }: Props) => {
             disabled={saving}
             onChange={(e) => setCategory(e.target.value)}
             placeholder="e.g. Appetizers"
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
           />
         </div>
 
@@ -228,7 +228,7 @@ const EditMenuItemModal = ({ item, restaurantId, onClose, onSaved }: Props) => {
               disabled={saving}
               onChange={(e) => setCostInput(e.target.value)}
               placeholder="0.00"
-              className="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+              className="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
             />
           </div>
           <p className="mt-1 text-xs text-gray-500">Leave blank to mark cost as unknown.</p>
@@ -256,7 +256,7 @@ const EditMenuItemModal = ({ item, restaurantId, onClose, onSaved }: Props) => {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800 disabled:opacity-50 flex items-center gap-2"
           >
             {saving && (
               <svg

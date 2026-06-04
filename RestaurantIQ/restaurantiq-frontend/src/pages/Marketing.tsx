@@ -83,7 +83,7 @@ const ResultsPanel = ({ result }: { result: MarketingResult }) => {
                   <button
                     type="button"
                     onClick={() => handleCopy(caption, idx)}
-                    className="text-xs text-gray-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
+                    className="text-xs text-gray-400 hover:text-navy-700 transition-colors flex items-center gap-1"
                   >
                     {/* Clipboard icon */}
                     <svg
@@ -115,7 +115,7 @@ const ResultsPanel = ({ result }: { result: MarketingResult }) => {
             {hashtags.map((tag, idx) => (
               <span
                 key={idx}
-                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700"
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-navy-50 text-navy-800"
               >
                 #{tag}
               </span>
@@ -219,11 +219,11 @@ const Marketing = () => {
 
   const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
   const selectClass =
-    'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+    'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-navy-500';
   const primaryBtn =
-    'w-full bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
+    'w-full bg-navy-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-navy-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
   const outlineBtn =
-    'w-full border border-indigo-600 text-indigo-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
+    'w-full border border-navy-700 text-navy-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-navy-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
 
   return (
     <div className="max-w-5xl space-y-6">

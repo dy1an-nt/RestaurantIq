@@ -72,8 +72,8 @@ const CATEGORY_STYLES: Record<InsightCategory, CategoryStyle> = {
     label: 'Operational',
   },
   customer_behavior: {
-    badge: 'bg-indigo-100 text-indigo-800',
-    border: 'border-indigo-400',
+    badge: 'bg-navy-100 text-navy-800',
+    border: 'border-navy-500',
     label: 'Customer Behavior',
   },
 };
@@ -238,7 +238,7 @@ const InsightsPanel = () => {
           <p className="text-sm font-medium text-red-600">{fetchState.message}</p>
           <button
             onClick={handleRetry}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800 disabled:opacity-50"
           >
             Try again
           </button>
@@ -254,7 +254,7 @@ const InsightsPanel = () => {
           </p>
           <Link
             to="/integrations"
-            className="inline-flex items-center mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+            className="inline-flex items-center mt-4 px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800"
           >
             Connect Square
           </Link>

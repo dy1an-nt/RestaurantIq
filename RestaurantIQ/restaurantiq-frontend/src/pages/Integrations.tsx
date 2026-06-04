@@ -265,7 +265,7 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
             value={idValue}
             disabled={connectBusy}
             onChange={(e) => setIdValue(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
           />
         </div>
         <div>
@@ -279,14 +279,14 @@ const IntegrationCard = ({ config }: { config: IntegrationConfig }) => {
             value={accessToken}
             disabled={connectBusy}
             onChange={(e) => setAccessToken(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
           />
           <p className="mt-1 text-xs text-gray-500">{config.tokenHelp}</p>
         </div>
         <button
           type="submit"
           disabled={connectBusy || !restaurant}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50"
+          className="px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800 disabled:opacity-50"
         >
           {connectBusy ? 'Saving…' : connected ? 'Update credentials' : `Connect ${config.title}`}
         </button>
@@ -383,7 +383,7 @@ const Integrations = () => {
     tokenPlaceholder: 'EAAA…',
     tokenHelp: (
       <>
-        Get one from <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">developer.squareup.com</a> → your app → Sandbox → Credentials.
+        Get one from <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer" className="text-navy-700 hover:underline">developer.squareup.com</a> → your app → Sandbox → Credentials.
       </>
     ),
     connected: !!restaurant?.square_location_id,
@@ -402,7 +402,7 @@ const Integrations = () => {
     tokenPlaceholder: 'ddx_…',
     tokenHelp: (
       <>
-        Get one from <a href="https://developer.doordash.com" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">developer.doordash.com</a> → your app → Credentials.
+        Get one from <a href="https://developer.doordash.com" target="_blank" rel="noreferrer" className="text-navy-700 hover:underline">developer.doordash.com</a> → your app → Credentials.
       </>
     ),
     connected: !!restaurant?.doordash_store_id,

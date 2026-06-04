@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import { useRestaurant } from './restaurant/RestaurantContext';
 import EditMenuItemModal, { MenuItemPatch } from './EditMenuItemModal';
+import Icon, { IconName } from './Icons';
 
 interface MenuItem {
   id: string;
@@ -18,46 +19,61 @@ interface MenuItem {
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 const TrendBadge = ({ trend }: { trend: MenuItem['trend'] }) => {
-  if (trend === 'up') return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">↑ Trending</span>;
-  if (trend === 'down') return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">↓ Declining</span>;
-  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">— Stable</span>;
+  const map: Record<MenuItem['trend'], { label: string; icon: IconName; cls: string }> = {
+    up: { label: 'Trending', icon: 'arrowUp', cls: 'bg-pos-bg text-pos' },
+    down: { label: 'Declining', icon: 'arrowDown', cls: 'bg-neg-bg text-neg' },
+    flat: { label: 'Stable', icon: 'flat', cls: 'bg-canvas text-ink-3' },
+  };
+  const { label, icon, cls } = map[trend];
+  return (
+    <span className={`inline-flex items-center gap-1 pl-[7px] pr-[9px] py-[3px] rounded-md text-xs font-bold ${cls}`}>
+      <Icon name={icon} size={14} strokeWidth={2} />
+      {label}
+    </span>
+  );
 };
 
-const MissingCostBadge = () => (
-  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-    Cost Missing
+const MissingCostChip = () => (
+  <span className="inline-flex items-center gap-[5px] px-[9px] py-[3px] rounded-md text-[11.5px] font-bold bg-warn-bg text-warn">
+    <Icon name="attention" size={13} strokeWidth={1.9} />
+    Add cost
   </span>
 );
 
 interface RowProps {
   item: MenuItem;
-  accent?: 'green' | 'red';
+  accent?: 'pos' | 'neg';
   savedItemId: string | null;
   onEdit: (item: MenuItem) => void;
 }
 
+const ACCENT_HEX = { pos: '#2f7a5b', neg: '#b25140' } as const;
+
 const Row = ({ item, accent, savedItemId, onEdit }: RowProps) => (
-  <tr className={`hover:bg-indigo-50 transition-colors group ${accent === 'green' ? 'border-l-4 border-green-500' : accent === 'red' ? 'border-l-4 border-red-400' : ''}`}>
-    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-      <span>{item.name}</span>
+  <tr className="group hover:bg-navy-50 transition-colors [&>td]:border-b [&>td]:border-line-2">
+    <td
+      className="px-[18px] py-[14px] text-sm"
+      style={accent ? { boxShadow: `inset 3px 0 0 ${ACCENT_HEX[accent]}` } : undefined}
+    >
+      <span className="font-bold text-ink">{item.name}</span>
       {savedItemId === item.id && (
-        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-pos-bg text-pos">
           Saved
         </span>
       )}
     </td>
-    <td className="px-4 py-3 text-sm text-gray-500">{item.category ?? '—'}</td>
-    <td className="px-4 py-3 text-sm text-gray-700">{fmt(item.price_cents)}</td>
-    <td className="px-4 py-3 text-sm text-gray-700">
-      {item.cost_cents === null ? <MissingCostBadge /> : fmt(item.cost_cents)}
+    <td className="px-[18px] py-[14px] text-[13px] text-ink-3">{item.category ?? '—'}</td>
+    <td className="px-[18px] py-[14px] text-sm text-right text-ink-2 tnum">{fmt(item.price_cents)}</td>
+    <td className="px-[18px] py-[14px] text-sm text-right text-ink-2 tnum">
+      {item.cost_cents === null ? <MissingCostChip /> : fmt(item.cost_cents)}
     </td>
-    <td className="px-4 py-3 text-sm font-semibold text-gray-900">{fmt(item.revenue_30d_cents)}</td>
-    <td className="px-4 py-3 text-sm text-gray-700">{item.orders_30d}</td>
-    <td className="px-4 py-3"><TrendBadge trend={item.trend} /></td>
-    <td className="px-4 py-3 text-right">
+    <td className="px-[18px] py-[14px] text-sm text-right font-bold text-ink tnum">{fmt(item.revenue_30d_cents)}</td>
+    <td className="px-[18px] py-[14px] text-sm text-right text-ink-2 tnum">{item.orders_30d.toLocaleString()}</td>
+    <td className="px-[18px] py-[14px]"><TrendBadge trend={item.trend} /></td>
+    <td className="px-[18px] py-[14px] text-right">
       <button
         onClick={() => onEdit(item)}
-        className="opacity-0 group-hover:opacity-100 focus:opacity-100 px-3 py-1 bg-white border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 focus:opacity-100 px-[13px] py-[5px] bg-surface border border-line text-[12.5px] font-bold text-ink-2 rounded-sm hover:bg-canvas hover:border-ink-3 transition-opacity"
       >
         Edit
       </button>
@@ -65,16 +81,29 @@ const Row = ({ item, accent, savedItemId, onEdit }: RowProps) => (
   </tr>
 );
 
-const SectionHeader = ({ label, colSpan }: { label: string; colSpan: number }) => (
+const SectionHeader = ({
+  icon,
+  tone,
+  label,
+  colSpan,
+}: {
+  icon: IconName;
+  tone: 'pos' | 'neg';
+  label: string;
+  colSpan: number;
+}) => (
   <tr>
-    <td colSpan={colSpan} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50">
-      {label}
+    <td colSpan={colSpan} className="px-[18px] pt-[18px] pb-[9px]">
+      <span className="inline-flex items-center gap-2 text-[11.5px] font-extrabold tracking-[0.07em] uppercase text-ink-2">
+        <Icon name={icon} size={15} strokeWidth={1.9} className={tone === 'pos' ? 'text-pos' : 'text-neg'} />
+        {label}
+      </span>
     </td>
   </tr>
 );
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
-  <div className="bg-white rounded-xl shadow overflow-hidden">{children}</div>
+  <div className="bg-surface border border-line rounded shadow overflow-hidden">{children}</div>
 );
 
 const MenuItemsTable = () => {
@@ -131,35 +160,26 @@ const MenuItemsTable = () => {
   };
 
   if (error) {
-    return <Shell><div className="px-4 py-8 text-sm text-red-600">Failed to load menu items: {error}</div></Shell>;
+    return <Shell><div className="px-[18px] py-8 text-sm text-neg">Failed to load menu items: {error}</div></Shell>;
   }
   if (items === null) {
-    return <Shell><div className="px-4 py-8 text-sm text-gray-500">Loading menu items…</div></Shell>;
+    return <Shell><div className="px-[18px] py-8 text-sm text-ink-3">Loading menu items…</div></Shell>;
   }
   if (items.length === 0) {
     return (
       <Shell>
         <div className="p-12 text-center">
-          <p className="text-lg font-semibold text-gray-900">No menu items yet</p>
-          <p className="text-sm text-gray-500 mt-2">
+          <p className="text-lg font-bold text-ink">No menu items yet</p>
+          <p className="text-sm text-ink-3 mt-2">
             Connect your Square POS and sync your catalog to see menu performance data.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
-            {restaurant?.pos_connected ? (
-              <Link
-                to="/integrations"
-                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800"
-              >
-                Run sync
-              </Link>
-            ) : (
-              <Link
-                to="/integrations"
-                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
-              >
-                Connect Square
-              </Link>
-            )}
+            <Link
+              to="/integrations"
+              className="px-4 py-2 bg-navy-700 text-white text-sm font-bold rounded-[9px] hover:bg-navy-800 transition-colors"
+            >
+              {restaurant?.pos_connected ? 'Run sync' : 'Connect Square'}
+            </Link>
           </div>
         </div>
       </Shell>
@@ -178,31 +198,54 @@ const MenuItemsTable = () => {
   return (
     <>
       {missingCostCount > 0 && (
-        <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-          <span className="font-semibold">{missingCostCount} {missingCostCount === 1 ? 'item' : 'items'} missing cost data</span>
-          {' '}— add costs to unlock full margin analysis. Click <strong>Edit</strong> on any row to enter a cost.
+        <div className="mb-[18px] flex items-center gap-[10px] rounded-sm bg-warn-bg text-warn border border-[#ecdfc0] px-[15px] py-[11px] text-[13px]">
+          <Icon name="attention" size={17} strokeWidth={1.8} className="flex-shrink-0" />
+          <span>
+            <b className="font-bold">
+              {missingCostCount} {missingCostCount === 1 ? 'item' : 'items'} missing cost data
+            </b>{' '}
+            — add costs to unlock full margin analysis.
+          </span>
         </div>
       )}
       <Shell>
-        <table className="w-full text-left">
+        <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              {['Item Name', 'Category', 'Price', 'Cost', '30d Revenue', 'Orders', 'Trend', ''].map((h, i) => (
-                <th key={i} className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{h}</th>
+            <tr className="bg-canvas border-b border-line">
+              {[
+                { h: 'Item', r: false },
+                { h: 'Category', r: false },
+                { h: 'Price', r: true },
+                { h: 'Cost', r: true },
+                { h: '30-Day Revenue', r: true },
+                { h: 'Orders', r: true },
+                { h: 'Trend', r: false },
+                { h: '', r: true },
+              ].map((c, i) => (
+                <th
+                  key={i}
+                  className={`px-[18px] py-[13px] text-[11px] font-bold uppercase tracking-[0.06em] text-ink-3 ${c.r ? 'text-right' : 'text-left'}`}
+                >
+                  {c.h}
+                </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {topPerformers.length > 0 && <SectionHeader label="⭐ Top Performers" colSpan={colSpan} />}
+          <tbody>
+            {topPerformers.length > 0 && (
+              <SectionHeader icon="star" tone="pos" label="Top Performers" colSpan={colSpan} />
+            )}
             {topPerformers.map((item) => (
-              <Row key={item.id} item={item} accent="green" savedItemId={savedItemId} onEdit={setEditingItem} />
+              <Row key={item.id} item={item} accent="pos" savedItemId={savedItemId} onEdit={setEditingItem} />
             ))}
             {middle.map((item) => (
               <Row key={item.id} item={item} savedItemId={savedItemId} onEdit={setEditingItem} />
             ))}
-            {needsAttention.length > 0 && <SectionHeader label="⚠️ Needs Attention" colSpan={colSpan} />}
+            {needsAttention.length > 0 && (
+              <SectionHeader icon="attention" tone="neg" label="Needs Attention" colSpan={colSpan} />
+            )}
             {needsAttention.map((item) => (
-              <Row key={item.id} item={item} accent="red" savedItemId={savedItemId} onEdit={setEditingItem} />
+              <Row key={item.id} item={item} accent="neg" savedItemId={savedItemId} onEdit={setEditingItem} />
             ))}
           </tbody>
         </table>

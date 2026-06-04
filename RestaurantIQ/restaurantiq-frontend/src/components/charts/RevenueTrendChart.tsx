@@ -1,6 +1,6 @@
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -32,11 +32,11 @@ const formatDollars = (cents: number): string => {
 };
 
 const Skeleton = () => (
-  <div className="h-[280px] bg-gray-100 rounded-lg animate-pulse" />
+  <div className="h-[280px] bg-canvas rounded animate-pulse" />
 );
 
 const Empty = () => (
-  <div className="h-[280px] flex items-center justify-center text-sm text-gray-400">
+  <div className="h-[280px] flex items-center justify-center text-sm text-ink-3">
     No revenue data for this period
   </div>
 );
@@ -53,18 +53,24 @@ const RevenueTrendChart = ({ data, loading }: Props) => {
 
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+      <AreaChart data={chartData} margin={{ top: 6, right: 16, left: 8, bottom: 4 }}>
+        <defs>
+          <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1e3a5f" stopOpacity={0.14} />
+            <stop offset="100%" stopColor="#1e3a5f" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke="#eef0f3" vertical={false} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 11, fill: '#76808f', fontWeight: 600 }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
         />
         <YAxis
           tickFormatter={(value: number) => formatDollars(value)}
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 11, fill: '#76808f', fontWeight: 600 }}
           tickLine={false}
           axisLine={false}
           width={56}
@@ -74,18 +80,20 @@ const RevenueTrendChart = ({ data, loading }: Props) => {
             const dollars = typeof value === 'number' ? `$${(value / 100).toFixed(2)}` : String(value);
             return [dollars, 'Revenue'];
           }}
-          labelStyle={{ color: '#111827', fontWeight: 600 }}
-          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '13px' }}
+          labelStyle={{ color: '#1f2733', fontWeight: 600 }}
+          contentStyle={{ borderRadius: '10px', border: '1px solid #e4e7ec', fontSize: '13px' }}
         />
-        <Line
+        <Area
           type="monotone"
           dataKey="revenue"
-          stroke="#6366f1"
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 4, fill: '#6366f1' }}
+          stroke="#1e3a5f"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="url(#revFill)"
+          activeDot={{ r: 4.5, fill: '#1e3a5f', stroke: '#fff', strokeWidth: 2 }}
         />
-      </LineChart>
+      </AreaChart>
     </ResponsiveContainer>
   );
 };

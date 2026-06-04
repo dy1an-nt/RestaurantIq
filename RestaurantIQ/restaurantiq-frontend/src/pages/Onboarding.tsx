@@ -17,7 +17,7 @@ const StepCircle = ({ index, current }: { index: number; current: number }) => {
   const active = index === current;
   if (done) {
     return (
-      <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center">
+      <div className="w-8 h-8 rounded-full bg-navy-700 flex items-center justify-center">
         <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
@@ -26,7 +26,7 @@ const StepCircle = ({ index, current }: { index: number; current: number }) => {
   }
   if (active) {
     return (
-      <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center">
+      <div className="w-8 h-8 rounded-full bg-navy-700 flex items-center justify-center">
         <span className="text-white text-sm font-semibold">{index + 1}</span>
       </div>
     );
@@ -44,12 +44,12 @@ const Stepper = ({ current }: { current: number }) => (
       <div key={label} className="flex items-center flex-1 last:flex-none">
         <div className="flex flex-col items-center">
           <StepCircle index={i} current={current} />
-          <span className={`mt-1 text-xs font-medium whitespace-nowrap ${i <= current ? 'text-indigo-600' : 'text-gray-400'}`}>
+          <span className={`mt-1 text-xs font-medium whitespace-nowrap ${i <= current ? 'text-navy-700' : 'text-gray-400'}`}>
             {label}
           </span>
         </div>
         {i < STEPS.length - 1 && (
-          <div className={`flex-1 h-px mx-2 mb-4 ${i < current ? 'bg-indigo-600' : 'bg-gray-200'}`} />
+          <div className={`flex-1 h-px mx-2 mb-4 ${i < current ? 'bg-navy-700' : 'bg-gray-200'}`} />
         )}
       </div>
     ))}
@@ -178,7 +178,7 @@ const Onboarding = () => {
                   placeholder="Your Restaurant Name"
                   value={restaurantName}
                   onChange={(e) => setRestaurantName(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500"
                 />
               </div>
               <div>
@@ -193,13 +193,13 @@ const Onboarding = () => {
                   placeholder="123 Main St, City, State"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500"
                 />
               </div>
               <button
                 type="submit"
                 disabled={step1Loading}
-                className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800 disabled:opacity-50"
               >
                 {step1Loading ? 'Creating…' : 'Continue'}
               </button>
@@ -225,7 +225,7 @@ const Onboarding = () => {
                   value={locationId}
                   disabled={step2Loading}
                   onChange={(e) => setLocationId(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -241,20 +241,20 @@ const Onboarding = () => {
                   value={accessToken}
                   disabled={step2Loading}
                   onChange={(e) => setAccessToken(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
                 />
               </div>
               <button
                 type="submit"
                 disabled={step2Loading}
-                className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800 disabled:opacity-50"
               >
                 {step2Loading ? 'Connecting…' : 'Connect Square'}
               </button>
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="w-full text-sm text-indigo-600 hover:underline"
+                className="w-full text-sm text-navy-700 hover:underline"
               >
                 Skip for now →
               </button>
@@ -278,7 +278,7 @@ const Onboarding = () => {
                   </div>
                   <button
                     onClick={() => navigate('/')}
-                    className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+                    className="w-full px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800"
                   >
                     Go to dashboard →
                   </button>
@@ -288,14 +288,14 @@ const Onboarding = () => {
                   <button
                     onClick={handleSync}
                     disabled={syncLoading}
-                    className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                    className="w-full px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800 disabled:opacity-50"
                   >
                     {syncLoading ? 'Syncing…' : 'Run sync'}
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate('/')}
-                    className="w-full text-sm text-indigo-600 hover:underline"
+                    className="w-full text-sm text-navy-700 hover:underline"
                   >
                     Skip →
                   </button>

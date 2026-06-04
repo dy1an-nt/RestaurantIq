@@ -1,3 +1,22 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: '"Hanken Grotesk"', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: #1f2733;
+  background: #f6f7f9;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv01";
+  letter-spacing: -0.005em;
+}
+
+/* tabular figures for all numeric table cells & KPI values */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
