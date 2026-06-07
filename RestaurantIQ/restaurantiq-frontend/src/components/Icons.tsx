@@ -20,7 +20,8 @@ export type IconName =
   | 'dashboard' | 'analytics' | 'margins' | 'insights' | 'alerts' | 'marketing'
   | 'integrations' | 'sync' | 'signout' | 'star' | 'attention' | 'arrowUp'
   | 'arrowDown' | 'flat' | 'search' | 'chevron' | 'calendar' | 'bell'
-  | 'filter' | 'download' | 'check' | 'dot' | 'mail' | 'lock' | 'store';
+  | 'filter' | 'download' | 'check' | 'dot' | 'mail' | 'lock' | 'store'
+  | 'chat' | 'advisor';
 
 const PATHS: Record<IconName, JSX.Element> = {
   dashboard: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M8 15.5v-3M12 15.5v-6M16 15.5v-4.5" /></>,
@@ -48,6 +49,8 @@ const PATHS: Record<IconName, JSX.Element> = {
   mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 7 7.5 5.5L19.5 7" /></>,
   lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
   store: <><path d="M4.5 9.5 6 4.5h12l1.5 5M5 9.5v9h14v-9M4.5 9.5h15" /><path d="M9.5 18.5v-4h5v4" /></>,
+  chat: <><path d="M4.5 6.5h15a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8l-4 3V7.5a1 1 0 0 1 1-1Z" /></>,
+  advisor: <><path d="M9 5.5h11M9 9.5h8M9 13.5h5" /><path d="M5.5 5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM5.5 9.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM5.5 13.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" /><path d="M4.5 18.5h6l3 2.5V18.5H20a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v13.5a1 1 0 0 0 1 1Z" /></>,
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {

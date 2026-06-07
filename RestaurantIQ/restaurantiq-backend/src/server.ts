@@ -20,6 +20,8 @@ import syncStatusRouter from './routes/integrations/syncStatus';
 import alertsRouter from './routes/alerts';
 import analyticsRouter from './routes/analytics';
 import marketingRouter from './routes/marketing';
+import chatRouter from './routes/chat';
+import advisorRouter from './routes/advisor';
 import { requestLogger } from './middleware/requestLogger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { startScheduler, stopScheduler } from './services/scheduler';
@@ -59,6 +61,8 @@ app.use('/api/integrations', syncStatusRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/marketing', marketingRouter);
+app.use('/api/chat', chatRouter);
+app.use('/api/advisor', advisorRouter);
 
 // 404 for any unmatched route, then the centralized error handler. Both must be
 // registered LAST — Express only routes to the error handler (4-arg) for errors

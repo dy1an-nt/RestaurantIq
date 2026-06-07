@@ -15,6 +15,8 @@ import AlertsPage from './pages/AlertsPage';
 import Analytics from './pages/Analytics';
 import MarginAnalysis from './pages/MarginAnalysis';
 import SyncHealth from './pages/SyncHealth';
+import Chat from './pages/Chat';
+import Advisor from './pages/Advisor';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import AlertsBanner from './components/AlertsBanner';
@@ -59,6 +61,8 @@ function App() {
             <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
             <Route path="/margins" element={<AppLayout><MarginAnalysis /></AppLayout>} />
             <Route path="/sync-health" element={<AppLayout><SyncHealth /></AppLayout>} />
+            <Route path="/chat" element={<AppLayout><Chat /></AppLayout>} />
+            <Route path="/advisor" element={<AppLayout><Advisor /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>

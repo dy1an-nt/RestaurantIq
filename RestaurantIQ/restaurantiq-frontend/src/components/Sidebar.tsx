@@ -21,6 +21,8 @@ const navItems: NavItem[] = [
   { label: 'Marketing', path: '/marketing', icon: 'marketing' },
   { label: 'Integrations', path: '/integrations', icon: 'integrations' },
   { label: 'Sync Health', path: '/sync-health', icon: 'sync' },
+  { label: 'AI Chat', path: '/chat', icon: 'chat' },
+  { label: 'Purchasing Advisor', path: '/advisor', icon: 'advisor' },
 ];
 
 /** Two-letter initials from a restaurant name ("Bella Trattoria" → "BT"). */
