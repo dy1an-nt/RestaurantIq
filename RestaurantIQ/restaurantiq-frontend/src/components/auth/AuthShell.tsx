@@ -3,6 +3,7 @@ import Logo from '../Logo';
 
 interface AuthShellProps {
   mode: 'login' | 'signup';
+  hideTabs?: boolean;
   children: React.ReactNode;
 }
 
@@ -11,7 +12,7 @@ interface AuthShellProps {
  * centered form column on the right. The segmented tab control maps directly
  * to the existing `/login` and `/signup` routes.
  */
-const AuthShell = ({ mode, children }: AuthShellProps) => {
+const AuthShell = ({ mode, hideTabs = false, children }: AuthShellProps) => {
   const isLogin = mode === 'login';
 
   return (
@@ -68,7 +69,7 @@ const AuthShell = ({ mode, children }: AuthShellProps) => {
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-[380px]">
           {/* Tab switch */}
-          <div className="flex gap-1 bg-canvas border border-line rounded p-1 mb-7">
+          {!hideTabs && <div className="flex gap-1 bg-canvas border border-line rounded p-1 mb-7">
             <Link
               to="/login"
               className={`flex-1 text-center py-[9px] rounded-sm text-[13.5px] font-bold transition-colors ${
@@ -85,7 +86,7 @@ const AuthShell = ({ mode, children }: AuthShellProps) => {
             >
               Create account
             </Link>
-          </div>
+          </div>}
 
           {children}
         </div>

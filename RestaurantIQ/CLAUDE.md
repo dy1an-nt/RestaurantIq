@@ -49,48 +49,89 @@ alerts
 
 ## Agent Team System
 
-Four specialized agents per sprint. Each owns a clear vertical slice.
+Seven specialized agents per sprint. Each owns a clear vertical slice.
 
 ### Agent Roles
+
+**Architect Agent** (`claude` / lead)
+- Goal format: "We are building [feature]. Produce the sprint plan: requirements, DB changes, API contract, edge cases, tenant isolation risks, scaling concerns, and success criteria."
+- Owns: sprint design, API contract definition, risk identification
+- Runs FIRST — backend and frontend must not start until the architect output is written
+- Mandatory output: requirements, DB changes (if any), new services/files, full API contract with request/response examples, risks, success criteria
+
+**Backend Agent** (`backend-agent`)
+- Goal format: "Build [endpoint/service] per the architect contract. Accept [inputs], return [outputs]."
+- Owns: Express routes, controllers, Postgres queries, API integrations (Square, DoorDash), cron jobs
+- Coordination: posts full API contract (files changed, endpoints, request/response examples, error cases) when done — frontend must never inspect backend code to understand the API
+- Mandatory output: files changed, DB changes, API endpoints with request + response examples, error cases
 
 **Frontend Agent** (`frontend-agent`)
 - Goal format: "Build [feature/component] that does [behavior]. User should be able to [interaction]."
 - Owns: React components, Tailwind styling, Recharts visualizations, page layout, routing
-- Coordination: waits for backend's API contract message before wiring fetch calls
+- Coordination: waits for backend's API contract before wiring fetch calls
+- Must handle: loading state, error state, empty state for every data-fetching component
 
-**Backend Agent** (`backend-agent`)
-- Goal format: "Build [endpoint/service] that [does what]. It should accept [inputs] and return [outputs]."
-- Owns: Express routes, controllers, Postgres queries, API integrations (Square, DoorDash), cron jobs
-- Coordination: messages frontend agent with full API contract when an endpoint is ready
+**Security Agent** (`qa-agent` with security brief)
+- Goal format: "Security review the [feature] backend routes. Check auth, multi-tenancy, input validation, secrets handling, and common attacks."
+- Owns: adversarial review — not "does it work" but "how could it be abused"
+- Runs after backend + frontend finish, before functional QA
+- Checklist:
+  - JWT validation present on every protected route
+  - Every DB query scoped with `WHERE restaurant_id = ?` (no cross-tenant leakage)
+  - No secrets or tokens in logs
+  - Encrypted storage for OAuth tokens
+  - Input validated at system boundaries
+  - SQL injection, XSS, CSRF, authorization bypass surface checked
 
-**QA + Integration Agent** (`qa-agent`)
-- Goal format: "Verify that [feature] works end to end. Test [these cases]. Fix anything broken between frontend and backend."
-- Owns: connecting frontend to backend, schema mismatches, error states, edge cases, empty states
-- Runs after both frontend and backend agents complete their sprint work
+**QA Agent** (`qa-agent`)
+- Goal format: "Verify [feature] end to end. Test happy path, invalid input, unauthorized user, wrong restaurant, empty dataset, large dataset."
+- Owns: functional correctness, integration, schema mismatches, error + empty states
+- Runs after Security Agent clears the backend
+- Test cases required: happy path, invalid input, unauthorized user, wrong restaurant ID, empty data, edge-case data
+
+**DevOps Agent** (`backend-agent` with devops brief)
+- Goal format: "Produce the deployment checklist for this sprint."
+- Owns: deployment impact assessment
+- Runs after QA passes
+- Mandatory output:
+  - Files/services changed
+  - New env vars (name, where to set in Railway/Vercel)
+  - Migration required? (Yes/No — include SQL if yes)
+  - Rollback plan if deployment fails
 
 **Teaching Agent** (`teaching-agent`)
-- Goal format: "After all three agents finish and QA passes, summarize everything that was built this sprint. Explain it like I'm a CS student who wants to understand it deeply, not just use it."
+- Goal format: "After all agents finish, summarize the sprint. Explain it like I'm a CS student who wants to understand it deeply."
 - Owns: `docs/weekly-summary/week-N.md` — one file per sprint
-- Waits for: QA agent to confirm everything passes before writing
+- Waits for: DevOps Agent output before writing
 - Produces, for each sprint:
   - What each file does and why it exists
   - Key technical decisions and why they were made that way
-  - Any patterns or concepts used (e.g. "this uses the repository pattern because…")
+  - Patterns or concepts used (e.g. "this uses the repository pattern because…")
   - What you should be able to explain in an interview about this week's work
   - What to look up if you want to go deeper
 
 ### Sprint Workflow
 
 ```
-Lead spawns:
-  ├── backend-agent  →  builds endpoint  →  messages frontend-agent with API contract
-  └── frontend-agent →  builds UI shell  →  waits for API contract, then wires fetch calls
+1. Architect Agent
+   → produces: requirements, DB changes, API contract, risks, success criteria
 
-After both finish:
-  └── qa-agent → verifies end-to-end, fixes integration issues, reports back to lead
+2. Backend Agent + Frontend Agent (parallel)
+   ├── backend-agent  → builds to contract → posts: files, endpoints, request/response, errors
+   └── frontend-agent → builds UI shell   → wires fetch calls after backend contract lands
 
-After QA passes:
-  └── teaching-agent → writes docs/weekly-summary/week-N.md explaining the sprint deeply
+3. Security Agent
+   → adversarial review of backend routes (auth, tenancy, secrets, attacks)
+   → blocks QA if issues found
+
+4. QA Agent
+   → functional end-to-end: happy path, invalid input, wrong tenant, empty/large data
+
+5. DevOps Agent
+   → deployment checklist: env vars, migrations, rollback plan
+
+6. Teaching Agent
+   → writes docs/weekly-summary/week-N.md
 ```
 
 ## Code Conventions

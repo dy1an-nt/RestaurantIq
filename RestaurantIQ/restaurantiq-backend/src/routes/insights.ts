@@ -46,7 +46,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 
   try {
-    const result = await generateInsights(summaries as SummaryRow[]);
+    const result = await generateInsights(summaries as unknown as SummaryRow[]);
     return res.json({ data: result, error: null });
   } catch {
     return res.status(502).json({ data: null, error: 'AI insights unavailable — try again shortly' });

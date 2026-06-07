@@ -41,7 +41,7 @@ const Sidebar = () => {
   const metaLine = [restaurant?.location, source].filter(Boolean).join(' · ');
 
   return (
-    <aside className="w-[248px] flex-shrink-0 bg-surface border-r border-line flex flex-col h-screen sticky top-0">
+    <aside className="w-[248px] flex-shrink-0 bg-surface border-r border-line flex flex-col h-screen sticky top-0 z-10">
       {/* Brand */}
       <div className="flex items-center gap-[11px] px-5 pt-5 pb-[18px]">
         <Logo size={30} on="navy" />

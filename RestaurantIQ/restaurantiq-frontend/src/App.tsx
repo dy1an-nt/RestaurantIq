@@ -4,6 +4,8 @@ import { RestaurantProvider } from './components/restaurant/RestaurantContext';
 import RequireRestaurant from './components/restaurant/RequireRestaurant';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Insights from './pages/Insights';
@@ -45,6 +47,8 @@ function App() {
             <Route path="/welcome" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/" element={<AppLayout><Dashboard /></AppLayout>} />
             <Route path="/dashboard" element={<Navigate to="/" replace />} />

@@ -6,8 +6,7 @@ export interface SummaryRow {
   total_quantity: number;
   total_revenue_cents: number;
   total_orders: number;
-  // PostgREST returns embedded relations as arrays even for many-to-one FKs.
-  menu_items: { name: string; category: string }[] | null;
+  menu_items: { name: string; category: string } | null;
 }
 
 export interface Insight {
@@ -146,7 +145,7 @@ export async function generateInsights(summaries: SummaryRow[]): Promise<Insight
   try {
     const userMessage = JSON.stringify(
       summaries.map((s) => {
-        const item = s.menu_items?.[0];
+        const item = s.menu_items;
         return {
           date: s.date,
           menu_item_name: item?.name ?? 'Unknown',

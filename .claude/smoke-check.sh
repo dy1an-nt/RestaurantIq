@@ -23,14 +23,24 @@ fail() { results+="  ✗ $1"$'\n'; }
 [ -d "$BE/node_modules/@supabase/supabase-js" ]   && ok "backend  dep: @supabase/supabase-js" || fail "backend  dep missing: @supabase/supabase-js"
 [ -d "$FE/node_modules/@supabase/supabase-js" ]   && ok "frontend dep: @supabase/supabase-js" || fail "frontend dep missing: @supabase/supabase-js"
 
-# 3. backend typecheck
+# 3. custom agents present
+AGENTS_DIR="/Volumes/Untitled/RestaurantIQ/.claude/agents"
+agent_count=0
+for f in "$AGENTS_DIR"/*.md; do
+  [ -f "$f" ] || continue
+  ok "agent    $(basename "$f")"
+  agent_count=$((agent_count + 1))
+done
+[ "$agent_count" -eq 0 ] && fail "agents   no .md files found in .claude/agents/"
+
+# 4. backend typecheck
 if (cd "$BE" && npx tsc --noEmit) >/tmp/riq-be-tsc.log 2>&1; then
   ok "backend  tsc --noEmit clean"
 else
   fail "backend  tsc --noEmit failed (see /tmp/riq-be-tsc.log)"
 fi
 
-# 4. frontend typecheck
+# 5. frontend typecheck
 if (cd "$FE" && npx tsc --noEmit) >/tmp/riq-fe-tsc.log 2>&1; then
   ok "frontend tsc --noEmit clean"
 else
