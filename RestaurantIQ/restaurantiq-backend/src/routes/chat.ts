@@ -172,13 +172,13 @@ router.post(
     }
 
     try {
-      const result = await sendMessage(
+      const { assistantMessage, usage } = await sendMessage(
         restaurant.id,
         restaurant.name,
         req.params.id,
         content.trim(),
       );
-      return res.json({ data: result, error: null });
+      return res.json({ data: { message: assistantMessage, usage }, error: null });
     } catch (err: unknown) {
       if (err instanceof Error && (err as NodeJS.ErrnoException & { status?: number }).status === 404) {
         return res.status(404).json({ data: null, error: 'Conversation not found' });
