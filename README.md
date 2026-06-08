@@ -111,6 +111,14 @@ RestaurantIQ/
 
 ---
 
+## Bug log
+
+16 documented bugs across the project — what broke, how it was diagnosed, what fixed it, and what the pattern tells you. Categories: React render timing, optimistic UI races, PostgREST quirks, Node module load order, distributed systems, deployment config, and schema edge cases.
+
+See [`docs/bugs.md`](docs/bugs.md).
+
+---
+
 ## Sprint history
 
 Built over 16 sprints. See [`docs/sprints-overview.md`](docs/sprints-overview.md) for the full log.
