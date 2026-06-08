@@ -23,10 +23,10 @@ const AuthShell = ({ mode, hideTabs = false, children }: AuthShellProps) => {
         <span className="absolute -right-[120px] -bottom-[120px] w-[340px] h-[340px] rounded-full border border-white/[0.08]" />
         <span className="absolute -right-[60px] -bottom-[60px] w-[220px] h-[220px] rounded-full border border-white/[0.08]" />
 
-        <div className="flex items-center gap-[11px]">
+        <Link to="/" className="flex items-center gap-[11px] hover:opacity-80 transition-opacity">
           <Logo size={32} on="light" />
           <span className="text-[19px] font-extrabold tracking-[-0.03em]">RestaurantIQ</span>
-        </div>
+        </Link>
 
         <div className="mt-auto relative z-[1]">
           <h2 className="text-[30px] leading-[1.18] font-extrabold tracking-tighter max-w-[13ch]">

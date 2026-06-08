@@ -21,6 +21,7 @@ import Topbar from './components/Topbar';
 import AlertsBanner from './components/AlertsBanner';
 import Landing from './pages/Landing';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import { useAuth } from './components/auth/AuthContext';
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
@@ -39,20 +40,27 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
   </ProtectedRoute>
 );
 
+const SmartHome = () => {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="p-8 text-sm text-gray-500">Loading…</div>;
+  if (!user) return <Landing />;
+  return <AppLayout><Dashboard /></AppLayout>;
+};
+
 function App() {
   return (
     <AuthProvider>
       <RestaurantProvider>
         <Router>
           <Routes>
-            <Route path="/welcome" element={<Landing />} />
+            <Route path="/" element={<SmartHome />} />
+            <Route path="/welcome" element={<Navigate to="/" replace />} />
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-            <Route path="/" element={<AppLayout><Dashboard /></AppLayout>} />
-            <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/ai" element={<AppLayout><AIAssistant /></AppLayout>} />
             <Route path="/insights" element={<Navigate to="/ai" replace />} />
             <Route path="/chat" element={<Navigate to="/ai" replace />} />
