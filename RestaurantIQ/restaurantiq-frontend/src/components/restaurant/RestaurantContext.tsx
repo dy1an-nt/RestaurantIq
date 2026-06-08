@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -57,6 +57,14 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setLoading(false);
     }
   }, []); // no deps — reads session at call time via getSession()
+
+  // Reset loading to true synchronously (before paint) when a session appears.
+  // Without this, RequireRestaurant sees loading=false + restaurant=null for one
+  // render cycle between the session becoming valid and the fetch effect firing,
+  // causing a flash redirect to /onboarding.
+  useLayoutEffect(() => {
+    if (session) setLoading(true);
+  }, [session?.user.id]);
 
   useEffect(() => {
     if (authLoading) return;
