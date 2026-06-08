@@ -8,14 +8,13 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
-import Insights from './pages/Insights';
+import AIAssistant from './pages/AIAssistant';
 import Marketing from './pages/Marketing';
 import Integrations from './pages/Integrations';
 import AlertsPage from './pages/AlertsPage';
 import Analytics from './pages/Analytics';
 import MarginAnalysis from './pages/MarginAnalysis';
 import SyncHealth from './pages/SyncHealth';
-import Chat from './pages/Chat';
 import Advisor from './pages/Advisor';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -54,14 +53,15 @@ function App() {
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/" element={<AppLayout><Dashboard /></AppLayout>} />
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
-            <Route path="/insights" element={<AppLayout><Insights /></AppLayout>} />
+            <Route path="/ai" element={<AppLayout><AIAssistant /></AppLayout>} />
+            <Route path="/insights" element={<Navigate to="/ai" replace />} />
+            <Route path="/chat" element={<Navigate to="/ai" replace />} />
             <Route path="/marketing" element={<AppLayout><Marketing /></AppLayout>} />
             <Route path="/integrations" element={<AppLayout><Integrations /></AppLayout>} />
             <Route path="/alerts" element={<AppLayout><AlertsPage /></AppLayout>} />
             <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
             <Route path="/margins" element={<AppLayout><MarginAnalysis /></AppLayout>} />
             <Route path="/sync-health" element={<AppLayout><SyncHealth /></AppLayout>} />
-            <Route path="/chat" element={<AppLayout><Chat /></AppLayout>} />
             <Route path="/advisor" element={<AppLayout><Advisor /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -16,12 +16,11 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: 'dashboard', end: true },
   { label: 'Analytics', path: '/analytics', icon: 'analytics' },
   { label: 'Margins', path: '/margins', icon: 'margins' },
-  { label: 'AI Insights', path: '/insights', icon: 'insights' },
+  { label: 'AI Assistant', path: '/ai', icon: 'insights' },
   { label: 'Alerts', path: '/alerts', icon: 'alerts' },
   { label: 'Marketing', path: '/marketing', icon: 'marketing' },
   { label: 'Integrations', path: '/integrations', icon: 'integrations' },
   { label: 'Sync Health', path: '/sync-health', icon: 'sync' },
-  { label: 'AI Chat', path: '/chat', icon: 'chat' },
   { label: 'Purchasing Advisor', path: '/advisor', icon: 'advisor' },
 ];
 
