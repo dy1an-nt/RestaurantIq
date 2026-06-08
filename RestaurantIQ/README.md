@@ -1,174 +1,167 @@
 # RestaurantIQ
 
-Restaurant analytics and marketing SaaS. Syncs with POS systems (Square) and delivery apps (DoorDash), surfaces menu analytics, and generates AI-powered marketing copy.
+[![License: MIT](https://img.shields.io/badge/License-MIT-navy.svg)](LICENSE)
 
-- **Frontend:** React + Tailwind + Recharts + Vite (`restaurantiq-frontend/`)
-- **Backend:** Node.js + Express (`restaurantiq-backend/`)
-- **Database:** PostgreSQL (Supabase)
-- **AI:** Anthropic Claude API
-- **Hosting:** Vercel (frontend) + Railway (backend)
+**Restaurant analytics and AI advisory platform.** Connects to Square POS and DoorDash, aggregates every order into a unified data layer, and surfaces AI-powered insights, forecasts, and a conversational assistant — all grounded in the restaurant's real numbers.
 
-See `CLAUDE.md` for project scope/conventions and `docs/weekly-summary/` for sprint-by-sprint deep dives.
+Live on Railway (backend) + Vercel (frontend).
 
-## Distributed Synchronization Architecture
+---
 
-RestaurantIQ keeps every connected restaurant's POS/delivery data fresh by syncing in the background — no human pressing "Run sync." The backend is designed to run as **multiple instances at once** (Railway replicas, rolling deploys) without two of them duplicating work or dropping it. This section documents how that coordination works: how one instance is elected to do the scheduling, how every sync attempt is recorded and retried durably, and how overlapping syncs are prevented.
+## What it does
 
-There are **three independent coordination layers**, and it's worth keeping them straight:
+A restaurant owner connects their Square POS and DoorDash account once. From that point on, RestaurantIQ syncs their order history automatically, computes menu performance metrics, and makes the numbers actionable:
 
-| Layer | Question it answers | Mechanism |
-|-------|---------------------|-----------|
-| **Leader election** | Which *instance* gets to schedule at all? | Postgres session-level advisory lock |
-| **Per-restaurant lock** | Can two *syncs* for the same restaurant overlap? | `integration_sync_status.locked_at` conditional UPDATE |
-| **Job rows** | What happened on each attempt, and what should happen next? | `sync_jobs` append-only table |
+- **Analytics dashboard** — revenue trend, top/bottom items by revenue, time-of-day sales heatmap, week-over-week comparisons
+- **Margin analysis** — true profit per dish once cost is entered, with a `null`-safe guard so uncosted items never report a fake 100% margin
+- **AI Insights** — Claude reads 30 days of daily summaries and returns 5–8 prioritized, structured recommendations (what to reprice, promote, or cut), rendered as cards with priority triage
+- **AI Chat** — multi-turn conversation grounded in the restaurant's last 28 days of data; context is attached per turn, capped at 8 turns to bound token cost, conversations persist
+- **Purchasing Advisor** — TypeScript linear regression produces per-item demand forecasts; Claude narrates the finished numbers in business language. Math is deterministic and testable; the LLM never touches unit counts
+- **Alerts engine** — deterministic rules flag items not selling, trending down 20%+, and new top performers; unread count surfaces in the sidebar and topbar
+- **Marketing copy** — AI-generated social captions and promo ideas driven by actual item performance
+- **Sync Health dashboard** — live view of the distributed sync scheduler: leader identity, per-provider success rates, recent job history, retry queue depth
 
-### Leader election (advisory-lock based)
+---
 
-On startup every instance opens **one dedicated `pg.Client`** and calls:
+## Tech stack
 
-```sql
-SELECT pg_try_advisory_lock(987654321);
-```
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
+| Backend | Node.js, Express, TypeScript |
+| Database | PostgreSQL via Supabase (23 migrations) |
+| Auth | Supabase Auth + custom JWT middleware (JWKS) |
+| AI | Anthropic Claude API (forced tool use, prompt caching) |
+| Integrations | Square Node SDK, DoorDash OAuth2 API |
+| Hosting | Railway (backend) + Vercel (frontend) |
+| Testing | Jest — 9 suites, 95 tests |
 
-Exactly one instance gets `true` and becomes the **leader** — the only instance that dispatches syncs. Every other instance gets `false` and runs as a **standby**.
+---
 
-Two non-obvious but critical design points:
+## Architecture highlights
 
-1. **We do not use the `supabase-js` client for this.** `supabase-js` talks to Postgres through PostgREST over HTTP — each query is a stateless round-trip through a connection pooler. A *session-level* advisory lock is bound to a single Postgres session and is released the moment that session returns to the pool. So a lock taken over `supabase-js` would release immediately. Leader election is therefore the one place in the codebase that opens a raw `pg` connection and holds it open for the entire process lifetime; that single connection is what holds the lock.
+### Distributed sync scheduler with leader election
 
-2. **The lock key (987654321) must be identical across all instances** — they are all contending for the same named lock. It's an arbitrary 64-bit integer with no meaning beyond "holding it means I'm the scheduler leader."
+The backend is designed to run as multiple instances simultaneously — Railway replicas, rolling deploys — without any two of them duplicating or dropping sync work. Three independent coordination layers:
 
-The leader records itself into the `scheduler_state` singleton row (`leader_instance_id`, `leader_acquired_at`) for observability, and runs a `SELECT 1` heartbeat each tick (`verifyLeadership`) to confirm its session — and therefore its lock — is still alive.
+| Layer | Mechanism |
+|---|---|
+| Which instance schedules at all | Postgres session-level advisory lock (`pg_try_advisory_lock`) |
+| No two syncs overlap per restaurant | `integration_sync_status.locked_at` conditional UPDATE |
+| Durable retry + audit trail | `sync_jobs` append-only table, 6-state lifecycle |
 
-### Failover behavior
+The advisory lock is held on a dedicated raw `pg.Client` for the process lifetime — not through Supabase's PostgREST layer, which would release it immediately on pool return. On crash or deploy, Postgres auto-releases the lock and a standby takes over within one scheduler tick.
 
-- **Leader crashes / loses its connection:** Postgres notices the session is gone and **automatically releases** the advisory lock. The `pg` client's `'error'`/`'end'` handlers also set `isLeader = false` locally. On the next scheduler tick, a standby calls `acquireLeadership()` and one of them wins the now-free lock.
-- **Graceful shutdown (deploy / SIGTERM / SIGINT):** the leader calls `pg_advisory_unlock` and closes its session *before* exiting, so a standby takes over within one tick instead of waiting out a stale-lock timeout. This is what keeps rolling deploys seamless.
-- **No `DATABASE_URL` (local dev, mock mode):** the pg layer is skipped entirely, a one-time warning is logged, and the instance behaves as a permanent sole leader — preserving the single-instance development experience with zero extra setup.
+Retry state lives entirely in Postgres — no `setTimeout`s, no in-memory queues. Retries survive crashes and deploys. Backoff schedule: 0s → 1m → 5m → 15m → 60m → `failed_permanently`. Auth failures go straight to permanent (no point hammering a dead credential).
 
-### The sync job lifecycle
+### AI integration with cost controls
 
-Every sync attempt (scheduled, manual, or retry) is one row in the append-only `sync_jobs` table. The `status` column moves through this lifecycle:
+All Claude calls use **forced tool use** (`tool_choice: { type: 'tool', name: '…' }`), which validates output against a schema server-side — no prompt-engineering workarounds for JSON reliability. The system prompt is deliberately over 1024 tokens to qualify for Anthropic's **prompt caching**, cutting repeat-call input cost by ~90%.
 
-```
-                          ┌──────────────┐
-                          │   pending    │  (row created)
-                          └──────┬───────┘
-                                 │ lock acquired, ingest starts
-                          ┌──────▼───────┐
-                          │   running    │
-                          └──────┬───────┘
-              success ┌──────────┼──────────┐ failure
-                      ▼          │          ▼
-              ┌──────────────┐   │   ┌───────────────────────────┐
-              │   success    │   │   │  transient?  vs  permanent?│
-              └──────────────┘   │   └───────┬───────────────┬───┘
-                                 │           │ transient     │ auth / disconnected / expired
-                                 │           ▼               ▼
-                                 │   ┌────────────────┐  ┌──────────────────────┐
-                                 │   │ pending_retry  │  │  failed_permanently  │
-                                 │   │ (next_retry_at)│  └──────────────────────┘
-                                 │   └───────┬────────┘
-                                 │           │ next_retry_at due → re-dispatched
-                                 │           │ (continues THIS row, → running)
-                                 │           │ budget exhausted → failed_permanently
-                  not syncable   │
-                  at dispatch ───┴──► skipped
-```
+The purchasing advisor separates concerns: TypeScript computes the linear regression, clamps projections to ±50% of last-week actuals, tiers confidence at 14/21/28 days, and refuses to forecast items with fewer than 14 days of history. Claude receives the finished numbers and writes only the narrative. `GET /forecast` is a pure cache read; `POST /forecast/refresh` is the only path that spends.
 
-- **`pending`** — row created, not yet started.
-- **`running`** — per-restaurant lock acquired, provider ingest in progress.
-- **`success`** — completed; `duration_ms`, `catalog_count`, `order_count` recorded.
-- **`pending_retry`** — transient failure; `next_retry_at` and incremented `retry_count` set; will be re-dispatched.
-- **`failed_permanently`** — auth/disconnected/expired failure, or retry budget exhausted; terminal.
-- **`skipped`** — integration not syncable at dispatch time (disconnected / token expired before any provider call).
+### Multi-tenant security
 
-### Retry strategy (durable, no in-memory queue)
+Every protected route validates a JWT against Supabase's JWKS endpoint. Every database query is scoped with `WHERE restaurant_id = $1` resolved from the authenticated user's `sub` — there is no path for a user to read another restaurant's data. OAuth tokens (Square, DoorDash) are AES-256-GCM encrypted at rest with key rotation support.
 
-Retry state lives **entirely in Postgres** — there are no `setTimeout`s and no in-memory queues, so retries survive restarts, deploys, and crashes. Each scheduler tick queries for `pending_retry` rows whose `next_retry_at <= now` and re-dispatches them. Whichever instance is leader at that moment picks up whatever is due.
+### Schema evolution
 
-**Backoff schedule** (by attempt number):
+23 forward-only SQL migrations in `restaurantiq-backend/migrations/`. A custom migration runner (`src/scripts/migrate.ts`) applies them in order and records each in a `schema_migrations` table. No ORM — raw SQL throughout so every index, constraint, and query is explicit.
 
-| Attempt | Delay |
-|---------|-------|
-| 1 | immediate (0 ms) |
-| 2 | 1 minute |
-| 3 | 5 minutes |
-| 4 | 15 minutes |
-| 5 | 60 minutes |
-| beyond `MAX_SYNC_RETRIES` | → `failed_permanently` |
+---
 
-**Permanent failures are never retried.** Auth errors, disconnected integrations, and expired tokens require a human to reconnect — retrying just hammers a dead credential and buries the actionable signal. These go straight to `failed_permanently`.
-
-**Important implementation detail:** a dispatched retry **continues its own job row** rather than creating a new one. The tick passes the existing `job.id` into the executor, which calls `markRunning` to flip the row from `pending_retry` to `running`. Because the due-retry query filters on `status = 'pending_retry'`, the row is no longer returned once it's running. (An earlier version created a fresh row per retry and left the original perpetually "due," causing an infinite re-dispatch loop — now covered by a regression test.)
-
-### Per-restaurant locking strategy
-
-Independent of leader election, no two syncs for the same `(restaurant, provider)` may overlap — even across a scheduled run, a retry, and a user clicking "Run sync." This is enforced by a single atomic conditional UPDATE on `integration_sync_status.locked_at` (from the prior sprint): the update only matches a row whose lock is free or stale, and the number of affected rows tells you whether you won. A held lock older than 10 minutes is reclaimable (crash recovery), and a 90-second timeout race around each ingest releases a hung pull far sooner.
-
-Even with a single leader this layer still matters, because a user can trigger a manual sync at any moment — the lock is what makes the manual button and the scheduler safe to coexist.
-
-### Bounded concurrency
-
-A tick processes due retries and freshly discovered integrations through a bounded-concurrency pool: at most `SYNC_MAX_CONCURRENCY` tasks run in flight at once, and at most `SYNC_BATCH_SIZE` integrations/retries are picked up per tick. Failures are isolated (`Promise.allSettled` semantics) so one broken restaurant never sinks the batch.
-
-### Observability
-
-- Structured JSON logs to stderr with a fixed event vocabulary: `LEADER_ACQUIRED`/`LEADER_LOST`, `SCHEDULER_TICK`, `SYNC_STARTED`/`SYNC_COMPLETED`/`SYNC_FAILED`, `RETRY_SCHEDULED`/`RETRY_EXECUTED`, `LOCK_ACQUIRED`/`LOCK_RELEASED`. Every line carries `event` and `ts` (and usually `instanceId`) so logs correlate across instances.
-- `GET /api/integrations/sync-metrics` (auth-scoped to the caller's restaurant) returns `{ scheduler, metrics, integrations, recent_jobs }`, surfaced in the **Sync Health** dashboard at `/sync-health`: leader identity and last-tick info, aggregate success rate / durations / pending retries, per-provider failure detail, and the last 20 job rows. The page polls every 30 seconds.
-
-### Environment variables
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `DATABASE_URL` | _(unset)_ | Postgres connection string for the leader-election `pg.Client`. **Unset → sole-leader fallback** (single-instance dev/mock mode, no distributed coordination). Set it to enable advisory-lock leader election across instances. |
-| `INSTANCE_ID` | `${hostname}-${pid}` | Human-readable identity recorded as the leader and shown in the dashboard. |
-| `SYNC_INTERVAL_MINUTES` | `15` | Scheduler tick cadence. |
-| `SYNC_BATCH_SIZE` | `50` | Max integrations/retries picked up per tick. |
-| `SYNC_MAX_CONCURRENCY` | `5` | Max syncs running in parallel within a tick. |
-| `MAX_SYNC_RETRIES` | `5` | Retry budget before a transient failure becomes `failed_permanently`. (Read at runtime so `.env` overrides are honored.) |
-| `SYNC_SCHEDULER_ENABLED` | `true` | Set `false` to disable the scheduler entirely (one-off scripts / CI). |
-
-### Architecture diagram
+## Project structure
 
 ```
-                       Railway (N instances behind one process model / rolling deploys)
-        ┌───────────────────────┐   ┌───────────────────────┐   ┌───────────────────────┐
-        │   Instance A (pg)     │   │   Instance B (pg)     │   │   Instance C (pg)     │
-        │  pg_try_advisory_lock │   │  pg_try_advisory_lock │   │  pg_try_advisory_lock │
-        │      (987654321)      │   │      (987654321)      │   │      (987654321)      │
-        └───────────┬───────────┘   └───────────┬───────────┘   └───────────┬───────────┘
-                    │  TRUE                      │  FALSE                     │  FALSE
-                    ▼                            ▼                            ▼
-              ╔═════════════╗               (standby)                   (standby)
-              ║   LEADER    ║   ← holds session-level advisory lock for process lifetime
-              ╚══════╤══════╝     crash/disconnect → lock auto-released → standby re-elects
-                     │
-                     │ scheduler tick  (every SYNC_INTERVAL_MINUTES)
-                     │   1. verify/acquire leadership
-                     │   2. find due retry jobs
-                     │   3. discover active integrations
-                     │   4. record tick → scheduler_state
-                     ▼
-        ┌──────────────────────────────────────────────────────────┐
-        │   sync_jobs   (append-only durable job / retry queue)     │
-        │   pending → running → success                             │
-        │                     ↘ failed → pending_retry → … →        │
-        │                                  failed_permanently       │
-        │                     ↘ skipped (not syncable)              │
-        └───────────────────────────┬──────────────────────────────┘
-                                     │ per (restaurant, provider)
-                                     │  ← per-restaurant lock (integration_sync_status.locked_at)
-                                     ▼
-                         ┌───────────────────────┐
-                         │  ingestSquare /        │   ← Square Node SDK / DoorDash API
-                         │  ingestDoorDash        │      (90s timeout race)
-                         └───────────┬───────────┘
-                                     ▼
-                    orders / order_items / menu_items  →  daily_summaries (pre-aggregation)
-                                     ▼
-                              Analytics / Dashboard
-                                     ▲
-                                     │ GET /api/integrations/sync-metrics (polls 30s)
-                              Sync Health page (/sync-health)
+RestaurantIQ/
+├── restaurantiq-backend/
+│   ├── src/
+│   │   ├── middleware/       # auth, rate limiting, error handling, chat daily cap
+│   │   ├── routes/           # REST endpoints (analytics, insights, chat, advisor, …)
+│   │   ├── services/
+│   │   │   ├── scheduler/    # leader election, sync jobs, retry, metrics
+│   │   │   ├── square/       # Square SDK ingestion + normalizers
+│   │   │   ├── doordash/     # DoorDash OAuth ingestion + normalizers
+│   │   │   └── ingestion/    # shared persistence layer (upsert pipeline)
+│   │   ├── lib/              # token encryption
+│   │   └── config/           # env validation, CORS
+│   └── migrations/           # 23 SQL migrations
+└── restaurantiq-frontend/
+    ├── src/
+    │   ├── pages/            # Dashboard, Analytics, Margins, AI Assistant, Advisor, …
+    │   ├── components/
+    │   │   ├── charts/       # Recharts wrappers (revenue trend, heatmap, top items)
+    │   │   ├── chat/         # MessageThread, Composer, DailyCapBanner
+    │   │   └── advisor/      # ForecastTable, NarrativePanel, InsufficientHistoryList
+    │   └── lib/              # API clients, Supabase client, hooks
+    └── vercel.json
 ```
+
+---
+
+## Key engineering decisions
+
+**Functional core / imperative shell for the forecast.** `buildForecast` is a pure TypeScript function: same inputs, same numbers, always. It can be unit-tested without mocking anything. Claude receives the output and writes prose. Token-priced arithmetic is the most expensive calculator ever built; the math runs in microseconds for free.
+
+**Denormalized `restaurant_id` on `chat_messages`.** Redundant with the parent `chat_conversations.restaurant_id`, but lets the per-day cap count hit a single-table index and makes every tenancy check a one-clause WHERE. Storage is cheap; joins on the hot path aren't.
+
+**CQRS in miniature on the advisor.** `GET /forecast` never recomputes — it's a cache read. `POST /forecast/refresh` is the only path that runs Claude, and it's rate-limited. Page-load cost and a 12-second wait during navigation are different failure modes; the button label "Generating…" is a feature.
+
+**No ORM.** Every query is raw SQL. Every index, constraint, and query plan is visible and intentional. The 23-migration history is the schema's changelog.
+
+---
+
+## Sprint history
+
+Built over 16 sprints. See [`docs/sprints-overview.md`](docs/sprints-overview.md) for the full log.
+
+| Sprints | What shipped |
+|---|---|
+| A–C | Square integration, JWT auth, live dashboard, Claude insights, deterministic alerts |
+| D–E | Recharts analytics (trend, heatmap, top items), AI marketing copy |
+| F–G | Alerts hardening, browser push notifications, guided onboarding, empty states |
+| H–I | Margin analysis, menu item cost entry (unlocks true profit per dish) |
+| J–K | DoorDash as second order source, shared ingestion pipeline, OAuth token encryption, 95 tests |
+| L–L+ | Automated sync scheduler, distributed leader election, durable job queue with retry/backoff |
+| M–N | Deployment config, CORS, rate limiting, security headers, health endpoint, runbooks |
+| O | Brand design system (Tailwind theme, SVG icons, landing page, auth shell) |
+| P | AI Chat, Purchasing Advisor, password reset, first production deploy (Railway + Vercel) |
+
+---
+
+## Local development
+
+**Prerequisites:** Node 18+, a Supabase project, Square sandbox credentials, Anthropic API key.
+
+```bash
+# Clone
+git clone https://github.com/dy1an-nt/RestaurantIQ.git
+cd RestaurantIQ
+
+# Backend
+cd restaurantiq-backend
+cp .env.example .env          # fill in your keys
+npm install
+npm run build
+npm start                     # http://localhost:3001
+
+# Frontend (separate terminal)
+cd restaurantiq-frontend
+cp .env.example .env          # set VITE_API_URL=http://localhost:3001
+npm install
+npm run dev                   # http://localhost:5173
+```
+
+**Environment variables** — see `.env.example` in each package for the full list. Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `TOKEN_ENCRYPTION_KEY` (32-byte hex). Optional: `DATABASE_URL` (enables distributed leader election; omit for single-instance dev), `SQUARE_*`, `DOORDASH_*`.
+
+**Running tests:**
+```bash
+cd restaurantiq-backend
+npm test              # 9 suites, 95 tests
+```
+
+---
+
+## What to keep in mind
+
+RestaurantIQ is a portfolio project and personal learning vehicle — it is not open for sign-ups and has no production data beyond the developer's own test restaurant. The `docs/` folder has the deployment runbook, migration guide, and operations notes if you want to understand how it's wired together.

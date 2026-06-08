@@ -47,5 +47,5 @@ coverage/
 # --- Personal study notes (not for public repo) ---
 docs/weekly-summary/
 
-# --- Claude Code worktrees ---
-.claude/worktrees/
+# --- Claude Code internal files ---
+.claude/

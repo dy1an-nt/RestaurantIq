@@ -92,3 +92,9 @@ A running log of every sprint shipped, oldest to newest. Each entry is a quick 3
 - Replaced all emoji with a hand-drawn SVG `Icon` set and added a public landing page, a split-screen branded auth flow (`AuthShell`), a new topbar, and a dashboard KPI strip.
 - Re-themed every page, chart, and table onto the design tokens; added a shared `useUnreadAlerts` hook for the sidebar/topbar badge.
 - No backend or API-contract changes — presentation only; KPIs deliberately omit fabricated week-over-week deltas the API can't substantiate.
+
+## Sprint P — AI Chat, Purchasing Advisor & First Production Deploy
+- Added a grounded multi-turn AI chat: each turn attaches 28 days of the restaurant's real sales data as context, limited to the last 8 messages to bound token cost. Conversations persist per restaurant with full CRUD.
+- Added a Purchasing Advisor: TypeScript linear regression produces per-item forecasts (±50% clamp, 14-day minimum, confidence tiers); Claude writes the narrative on the finished numbers — never the math. Forecasts cached 24 hours; `GET` never re-prompts, only `POST /refresh`.
+- Added daily chat cap (50 messages/restaurant/day, DB-backed so it holds across instances), forced tool-use on all Claude calls for schema-guaranteed output, and prompt caching on the system prompt to cut repeat-call cost ~90%.
+- Shipped password reset flow (forgot / reset pages, Supabase recovery event wiring) and put the full stack live for the first time on Railway (backend) and Vercel (frontend).
