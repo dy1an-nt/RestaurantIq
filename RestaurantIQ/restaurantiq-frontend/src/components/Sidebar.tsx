@@ -16,7 +16,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: 'dashboard', end: true },
   { label: 'Analytics', path: '/analytics', icon: 'analytics' },
   { label: 'Margins', path: '/margins', icon: 'margins' },
-  { label: 'AI Assistant', path: '/ai', icon: 'insights' },
+  { label: 'RIQ Advisor', path: '/ai', icon: 'insights' },
   { label: 'Alerts', path: '/alerts', icon: 'alerts' },
   { label: 'Marketing', path: '/marketing', icon: 'marketing' },
   { label: 'Integrations', path: '/integrations', icon: 'integrations' },
