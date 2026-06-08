@@ -1,6 +1,7 @@
 # RestaurantIQ
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-navy.svg)](LICENSE)
+[![Database Schema](https://img.shields.io/badge/Database-Schema-4A90E2.svg)](docs/schema.md)
 
 **Restaurant analytics and AI advisory platform.** Connects to Square POS and DoorDash, aggregates every order into a unified data layer, and surfaces AI-powered insights, forecasts, and a conversational assistant — all grounded in the restaurant's real numbers.
 
@@ -108,6 +109,14 @@ RestaurantIQ/
 **CQRS in miniature on the advisor.** `GET /forecast` never recomputes — it's a cache read. `POST /forecast/refresh` is the only path that runs Claude, and it's rate-limited. Page-load cost and a 12-second wait during navigation are different failure modes; the button label "Generating…" is a feature.
 
 **No ORM.** Every query is raw SQL. Every index, constraint, and query plan is visible and intentional. The 23-migration history is the schema's changelog.
+
+---
+
+## Database schema
+
+23 forward-only SQL migrations. Three Mermaid ER diagrams (core data, sync infrastructure, AI features) plus the design thought process — why multi-tenancy lives in a column, why daily summaries exist alongside raw orders, how the two-table sync architecture works, and why every token is stored as integer cents.
+
+See [`docs/schema.md`](docs/schema.md).
 
 ---
 

@@ -1,6 +1,7 @@
 # RestaurantIQ
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-navy.svg)](LICENSE)
+[![Database Schema](https://img.shields.io/badge/Database-Schema-4A90E2.svg)](RestaurantIQ/docs/schema.md)
 
 **Restaurant analytics and AI advisory platform.** Connects to Square POS and DoorDash, aggregates every order into a unified data layer, and surfaces AI-powered insights, forecasts, and a conversational assistant — all grounded in the restaurant's real numbers.
 
@@ -111,17 +112,25 @@ RestaurantIQ/
 
 ---
 
+## Database schema
+
+23 forward-only SQL migrations. Three Mermaid ER diagrams (core data, sync infrastructure, AI features) plus the design thought process — why multi-tenancy lives in a column, why daily summaries exist alongside raw orders, how the two-table sync architecture works, and why every token is stored as integer cents.
+
+See [`docs/schema.md`](RestaurantIQ/docs/schema.md).
+
+---
+
 ## Bug log
 
 16 documented bugs across the project — what broke, how it was diagnosed, what fixed it, and what the pattern tells you. Categories: React render timing, optimistic UI races, PostgREST quirks, Node module load order, distributed systems, deployment config, and schema edge cases.
 
-See [`docs/bugs.md`](docs/bugs.md).
+See [`docs/bugs.md`](RestaurantIQ/docs/bugs.md).
 
 ---
 
 ## Sprint history
 
-Built over 16 sprints. See [`docs/sprints-overview.md`](docs/sprints-overview.md) for the full log.
+Built over 16 sprints. See [`docs/sprints-overview.md`](RestaurantIQ/docs/sprints-overview.md) for the full log.
 
 | Sprints | What shipped |
 |---|---|
