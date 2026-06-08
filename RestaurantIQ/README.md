@@ -37,6 +37,40 @@ A restaurant owner connects their Square POS and DoorDash account once. From tha
 | Hosting | Railway (backend) + Vercel (frontend) |
 | Testing | Jest — 9 suites, 95 tests |
 
+```mermaid
+graph LR
+    User(["Restaurant Owner"])
+
+    subgraph Vercel["Vercel — Frontend"]
+        React["React 18 · Vite\nTypeScript · Tailwind · Recharts"]
+    end
+
+    subgraph Railway["Railway — Backend"]
+        Express["Express · TypeScript"]
+        Scheduler["Sync Scheduler\nleader-elected"]
+    end
+
+    subgraph Supabase["Supabase"]
+        Postgres[("PostgreSQL\n23 migrations")]
+        Auth["Auth / JWKS"]
+    end
+
+    Square["Square API"]
+    DoorDash["DoorDash API"]
+    Claude["Anthropic\nClaude API"]
+
+    User -->|HTTPS| React
+    React -->|"REST + JWT"| Express
+    Express -.->|"JWKS verify"| Auth
+    Express -->|"SQL queries"| Postgres
+    Express -->|OAuth2| Square
+    Express -->|OAuth2| DoorDash
+    Express -->|"tool use + caching"| Claude
+    Scheduler -->|"advisory lock"| Postgres
+    Scheduler -->|ingest| Square
+    Scheduler -->|ingest| DoorDash
+```
+
 ---
 
 ## Architecture highlights
@@ -55,11 +89,51 @@ The advisory lock is held on a dedicated raw `pg.Client` for the process lifetim
 
 Retry state lives entirely in Postgres — no `setTimeout`s, no in-memory queues. Retries survive crashes and deploys. Backoff schedule: 0s → 1m → 5m → 15m → 60m → `failed_permanently`. Auth failures go straight to permanent (no point hammering a dead credential).
 
+```mermaid
+flowchart TD
+    Tick([Scheduler tick]) --> Lock{"pg_try_advisory_lock\nprocess-level"}
+    Lock -->|lost| Wait([Standby — wait for next tick])
+    Lock -->|"won — leader"| List["Query restaurants\nwith active integrations"]
+    List --> Row{"Conditional UPDATE\nlocked_at IS NULL\nOR locked_at stale"}
+    Row -->|"0 rows — already running"| Skip([Skip])
+    Row -->|"1 row — lock acquired"| Ingest["Run ingest\nSquare or DoorDash"]
+    Ingest -->|success| Done["status = success\nlocked_at = NULL"]
+    Ingest -->|"auth error"| Perm["status = failed_permanently\nno retry"]
+    Ingest -->|"transient error"| Retry["status = pending_retry\nnext_retry_at = now + backoff"]
+    Retry --> Scale["0 s → 1 m → 5 m → 15 m → 60 m → failed_permanently"]
+```
+
 ### AI integration with cost controls
 
 All Claude calls use **forced tool use** (`tool_choice: { type: 'tool', name: '…' }`), which validates output against a schema server-side — no prompt-engineering workarounds for JSON reliability. The system prompt is deliberately over 1024 tokens to qualify for Anthropic's **prompt caching**, cutting repeat-call input cost by ~90%.
 
 The purchasing advisor separates concerns: TypeScript computes the linear regression, clamps projections to ±50% of last-week actuals, tiers confidence at 14/21/28 days, and refuses to forecast items with fewer than 14 days of history. Claude receives the finished numbers and writes only the narrative. `GET /forecast` is a pure cache read; `POST /forecast/refresh` is the only path that spends.
+
+```mermaid
+flowchart LR
+    subgraph Insights["Insights"]
+        direction TB
+        I1["30-day daily_summaries"] --> I2["System prompt\n>1024 tokens — prompt-cached"]
+        I2 --> I3["Claude\nforced tool_choice\nschema-validated output"]
+        I3 --> I4["5–8 recommendation\ncards with priority"]
+    end
+
+    subgraph Chat["AI Chat"]
+        direction TB
+        C1["28-day data\ncontext window"] --> C2["Message history\ncapped at 8 turns"]
+        C2 --> C3["Claude\nmulti-turn conversation"]
+        C3 --> C4["Persisted to\nchat_messages"]
+    end
+
+    subgraph Advisor["Purchasing Advisor"]
+        direction TB
+        A1["TypeScript\nlinear regression"] --> A2["Clamp ±50%\ntier confidence\n14 / 21 / 28 days"]
+        A2 --> A3{Cache fresh?}
+        A3 -->|"GET /forecast\nfree read"| A4["Return\ncached payload"]
+        A3 -->|"POST /forecast/refresh\nrate-limited"| A5["Claude narrates\nthe numbers"]
+        A5 --> A4
+    end
+```
 
 ### Multi-tenant security
 
