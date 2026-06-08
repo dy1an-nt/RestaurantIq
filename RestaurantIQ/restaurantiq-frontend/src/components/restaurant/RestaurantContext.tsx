@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -33,6 +33,20 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Track which user ID we last rendered for. When it changes to a non-null
+  // value we call setLoading(true) *during the render* so React re-renders
+  // this component before painting any children. This prevents RequireRestaurant
+  // from ever seeing loading:false + restaurant:null with a live session, which
+  // was causing a flash redirect to /onboarding on every login.
+  const [prevUserId, setPrevUserId] = useState<string | null>(() => session?.user.id ?? null);
+  const currentUserId = session?.user.id ?? null;
+  if (currentUserId !== prevUserId) {
+    setPrevUserId(currentUserId);
+    if (currentUserId !== null) {
+      setLoading(true);
+    }
+  }
+
   const fetchMe = useCallback(async () => {
     const { data: { session: currentSession } } = await supabase.auth.getSession();
     if (!currentSession) {
@@ -56,15 +70,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       setLoading(false);
     }
-  }, []); // no deps — reads session at call time via getSession()
-
-  // Reset loading to true synchronously (before paint) when a session appears.
-  // Without this, RequireRestaurant sees loading=false + restaurant=null for one
-  // render cycle between the session becoming valid and the fetch effect firing,
-  // causing a flash redirect to /onboarding.
-  useLayoutEffect(() => {
-    if (session) setLoading(true);
-  }, [session?.user.id]);
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
