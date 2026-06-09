@@ -143,7 +143,7 @@ export const getDoorDashClient = (
     throw new Error('No DoorDash store id — call /connect first.');
   }
 
-  console.error(`[doordash] live mode store=${storeId} token=${token.slice(0, 8)}... len=${token.length}`);
+  console.error(`[doordash] live mode store=${storeId}`);
 
   return {
     fetchCatalog: async () => {

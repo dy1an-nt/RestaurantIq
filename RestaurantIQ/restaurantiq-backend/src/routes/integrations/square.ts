@@ -10,9 +10,13 @@ const SQUARE_CREDS_SELECT =
 
 const router = Router();
 
+router.use(authMiddleware);
+
 /**
  * GET /api/integrations/square/status
- * Quick health probe — no auth required so the frontend can call it pre-login.
+ * Quick health probe. Authenticated — it reveals the integration mode and
+ * environment, which is operational metadata, so it sits behind auth like the
+ * rest of the integration routes.
  */
 router.get('/status', (_req: Request, res: Response) => {
   res.json({
@@ -23,8 +27,6 @@ router.get('/status', (_req: Request, res: Response) => {
     error: null,
   });
 });
-
-router.use(authMiddleware);
 
 /**
  * POST /api/integrations/square/connect

@@ -10,10 +10,13 @@ const DOORDASH_CREDS_SELECT =
 
 const router = Router();
 
+router.use(authMiddleware);
+
 /**
  * GET /api/integrations/doordash/status
- * Quick health probe — mirrors the Square status endpoint. No auth required so
- * the frontend can render mode/environment before the connect flow completes.
+ * Quick health probe — mirrors the Square status endpoint. Authenticated: it
+ * exposes integration mode/environment (operational metadata), so it sits
+ * behind auth with the rest of the integration routes.
  */
 router.get('/status', (_req: Request, res: Response) => {
   res.json({
@@ -24,8 +27,6 @@ router.get('/status', (_req: Request, res: Response) => {
     error: null,
   });
 });
-
-router.use(authMiddleware);
 
 /**
  * POST /api/integrations/doordash/connect

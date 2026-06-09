@@ -22,6 +22,23 @@ const getMode = (): AuthMode => {
   return _mode;
 };
 
+// Supabase signs user-session tokens with audience "authenticated" and issuer
+// "<SUPABASE_URL>/auth/v1". Pinning both rejects tokens minted for a different
+// audience/issuer even when signed by the same project keys — a token is only
+// accepted if it is genuinely a Supabase end-user session token. The audience
+// is overridable for non-default Supabase configurations.
+const EXPECTED_AUDIENCE = process.env.SUPABASE_JWT_AUD ?? 'authenticated';
+
+// Build the shared claim-verification options. The issuer key is only included
+// when SUPABASE_URL is set, so passing an explicit `issuer: undefined` (which
+// some verifiers mishandle) never happens.
+const verifyOptions = (): { audience: string; issuer?: string } => {
+  const url = process.env.SUPABASE_URL;
+  const opts: { audience: string; issuer?: string } = { audience: EXPECTED_AUDIENCE };
+  if (url) opts.issuer = `${url.replace(/\/$/, '')}/auth/v1`;
+  return opts;
+};
+
 let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 const getJwks = () => {
   if (_jwks) return _jwks;
@@ -35,7 +52,7 @@ const verifyJwks = async (token: string): Promise<JWTPayload | null> => {
   const jwks = getJwks();
   if (!jwks) return null;
   try {
-    const { payload } = await jwtVerify(token, jwks);
+    const { payload } = await jwtVerify(token, jwks, verifyOptions());
     return payload;
   } catch (err: any) {
     console.error('[auth] JWKS verify failed:', err?.code, err?.message);
@@ -47,7 +64,7 @@ const verifyHs256 = (token: string): JWTPayload | null => {
   const secret = process.env.SUPABASE_JWT_SECRET;
   if (!secret) return null;
   try {
-    return jwt.verify(token, secret) as JWTPayload;
+    return jwt.verify(token, secret, verifyOptions()) as JWTPayload;
   } catch (err: any) {
     console.error('[auth] HS256 verify failed:', err?.message);
     return null;

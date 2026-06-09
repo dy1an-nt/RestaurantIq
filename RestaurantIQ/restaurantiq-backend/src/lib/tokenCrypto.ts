@@ -111,12 +111,22 @@ export function decryptToken(encrypted: string): string {
  * Lenient decrypt for ingestion paths: returns the value untouched if it isn't
  * in encrypted form, and swallows decrypt failures (returning the raw value) so
  * a single bad credential never crashes a sync.
+ *
+ * A swallowed failure means a value that *looked* encrypted (contained ':')
+ * could not be decrypted with any configured key — usually a key rotation /
+ * misconfiguration. We log a warning (never the value itself) so this surfaces
+ * in logs instead of silently handing ciphertext to a provider as a "token".
  */
 export function decryptTokenSafe(value: string): string {
   if (!value.includes(':')) return value;
   try {
     return decryptToken(value);
-  } catch {
+  } catch (err) {
+    console.error(
+      '[tokenCrypto] decryptTokenSafe: value appears encrypted but no configured ' +
+        'key could decrypt it — passing through raw. Check token encryption keys. ' +
+        `(${(err as Error).message})`,
+    );
     return value;
   }
 }

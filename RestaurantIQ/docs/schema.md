@@ -189,11 +189,13 @@ erDiagram
 
 ### Multi-tenancy by column, not by schema
 
-Every table carries `restaurant_id`. Every backend route resolves it from `req.user.sub` (the JWT `sub` claim issued by Supabase Auth) and appends `WHERE restaurant_id = $1` to every query. There are no shared rows, no row-level security policy to forget, and no possible path for one restaurant to read another's data — the guard lives in code that runs on every request.
+Every table carries `restaurant_id`. Every backend route resolves it from `req.user.sub` (the JWT `sub` claim issued by Supabase Auth) and appends `WHERE restaurant_id = $1` to every query. There are no shared rows, and no path for one restaurant to read another's data — the primary guard lives in code that runs on every request.
 
 ```
 JWT sub → restaurants.user_id → restaurants.id → WHERE restaurant_id = $1
 ```
+
+As a defense-in-depth backstop, migration `024_enable_rls_backstop.sql` enables Row-Level Security on every tenant table with **no** policies. The backend connects with the Supabase service-role key (which bypasses RLS), so this is purely additive — every query keeps working unchanged. Its purpose is to default-deny the `anon`/`authenticated` roles: if the public anon key the frontend ships ever reaches these tables via PostgREST directly, RLS returns zero rows instead of leaking data. Code-level scoping is still the primary enforcement; RLS is the safety net so a single missed `WHERE restaurant_id = $1` is no longer a cross-tenant leak at the database layer.
 
 ### All money as integer cents
 
