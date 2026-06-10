@@ -14,6 +14,7 @@ import Integrations from './pages/Integrations';
 import AlertsPage from './pages/AlertsPage';
 import Analytics from './pages/Analytics';
 import MarginAnalysis from './pages/MarginAnalysis';
+import ChannelMargins from './pages/ChannelMargins';
 import SyncHealth from './pages/SyncHealth';
 import Advisor from './pages/Advisor';
 import Sidebar from './components/Sidebar';
@@ -69,6 +70,7 @@ function App() {
             <Route path="/alerts" element={<AppLayout><AlertsPage /></AppLayout>} />
             <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
             <Route path="/margins" element={<AppLayout><MarginAnalysis /></AppLayout>} />
+            <Route path="/channel-margins" element={<AppLayout><ChannelMargins /></AppLayout>} />
             <Route path="/sync-health" element={<AppLayout><SyncHealth /></AppLayout>} />
             <Route path="/advisor" element={<AppLayout><Advisor /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />

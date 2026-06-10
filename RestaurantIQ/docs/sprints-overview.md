@@ -98,3 +98,9 @@ A running log of every sprint shipped, oldest to newest. Each entry is a quick 3
 - Added a Purchasing Advisor: TypeScript linear regression produces per-item forecasts (±50% clamp, 14-day minimum, confidence tiers); Claude writes the narrative on the finished numbers — never the math. Forecasts cached 24 hours; `GET` never re-prompts, only `POST /refresh`.
 - Added daily chat cap (50 messages/restaurant/day, DB-backed so it holds across instances), forced tool-use on all Claude calls for schema-guaranteed output, and prompt caching on the system prompt to cut repeat-call cost ~90%.
 - Shipped password reset flow (forgot / reset pages, Supabase recovery event wiring) and put the full stack live for the first time on Railway (backend) and Vercel (frontend).
+
+## Sprint Q — Cross-Channel Delivery-Tax Margins
+- Added a Channel Margins page: per-item margin for in-house (Square/Toast/manual) vs DoorDash delivery, with the platform "delivery tax" (commission + flat fee) subtracted from delivery revenue so the owner sees what they actually keep.
+- MVP models the delivery tax as a per-restaurant configurable commission (basis points) + flat fee per order — real per-order DoorDash fees aren't ingested — with all math in integer cents (floor commission, proportional flat-fee allocation, remainder dropped) and unit tests pinning every rule.
+- Treats `cost_cents === 0` (DoorDash's default) the same as null = "cost unknown," excluding those items rather than showing fake 100% margins; tenant safety via two-hop scoping (orders first, then `order_items` by chunked `.in()`) since `order_items` has no `restaurant_id`.
+- Hardened the settings PATCH with strict integer/bounds validation and unknown-field rejection (mass-assignment protection); fixed a React refetch-cleanup leak (refetchKey counter) and a Recharts axis that clipped negative margins.

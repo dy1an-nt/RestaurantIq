@@ -21,7 +21,7 @@ export type IconName =
   | 'integrations' | 'sync' | 'signout' | 'star' | 'attention' | 'arrowUp'
   | 'arrowDown' | 'flat' | 'search' | 'chevron' | 'calendar' | 'bell'
   | 'filter' | 'download' | 'check' | 'dot' | 'mail' | 'lock' | 'store'
-  | 'chat' | 'advisor';
+  | 'chat' | 'advisor' | 'channels';
 
 const PATHS: Record<IconName, JSX.Element> = {
   dashboard: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M8 15.5v-3M12 15.5v-6M16 15.5v-4.5" /></>,
@@ -51,6 +51,7 @@ const PATHS: Record<IconName, JSX.Element> = {
   store: <><path d="M4.5 9.5 6 4.5h12l1.5 5M5 9.5v9h14v-9M4.5 9.5h15" /><path d="M9.5 18.5v-4h5v4" /></>,
   chat: <><path d="M4.5 6.5h15a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8l-4 3V7.5a1 1 0 0 1 1-1Z" /></>,
   advisor: <><path d="M9 5.5h11M9 9.5h8M9 13.5h5" /><path d="M5.5 5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM5.5 9.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM5.5 13.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" /><path d="M4.5 18.5h6l3 2.5V18.5H20a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v13.5a1 1 0 0 0 1 1Z" /></>,
+  channels: <><path d="M3.5 18.5h8v-6h-8v6ZM3.5 9.5h8v-5h-8v5Z" /><path d="M15.5 18.5h5v-14h-5v14Z" /><path d="M8.5 12.5v-3" /></>,
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {

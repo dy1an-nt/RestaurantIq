@@ -3,6 +3,10 @@ import { JWTPayload } from 'jose';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
 import { analyzeMargins, MarginAnalysisError } from '../services/marginAnalysisService';
+import {
+  analyzeChannelMargins,
+  ChannelMarginError,
+} from '../services/channelMarginService';
 
 interface AuthRequest extends Request {
   user?: JWTPayload;
@@ -171,6 +175,137 @@ router.get('/margins', async (req: AuthRequest, res: Response) => {
       err instanceof MarginAnalysisError ? err.message : 'Failed to analyze margins';
     return res.status(500).json({ data: null, error: message });
   }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/analytics/channel-margins
+// Cross-channel per-item margin breakdown: in-house (Square/Toast/manual) vs
+// DoorDash delivery after platform commission and flat fee.
+//
+// The restaurant row must include doordash_commission_bps and
+// doordash_flat_fee_cents (added in migration 025). Those values are passed
+// directly to the service — the route does no margin math itself.
+// ---------------------------------------------------------------------------
+router.get('/channel-margins', async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.sub;
+  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
+
+  const { data: restaurant, error: rErr } = await supabase
+    .from('restaurants')
+    .select('id, doordash_commission_bps, doordash_flat_fee_cents')
+    .eq('user_id', userId)
+    .single();
+
+  if (rErr || !restaurant) {
+    return res.status(404).json({ data: null, error: 'Restaurant not found' });
+  }
+
+  try {
+    const data = await analyzeChannelMargins(
+      restaurant.id,
+      restaurant.doordash_commission_bps,
+      restaurant.doordash_flat_fee_cents,
+    );
+    return res.json({ data, error: null });
+  } catch (err) {
+    const message =
+      err instanceof ChannelMarginError ? err.message : 'Failed to analyze channel margins';
+    return res.status(500).json({ data: null, error: message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/analytics/delivery-economics
+// Update the calling restaurant's DoorDash commission and/or flat-fee settings.
+//
+// Body (at least one field required):
+//   doordash_commission_bps  — integer, 0–5000
+//   doordash_flat_fee_cents  — integer, 0–2000
+//
+// Returns the updated economics values (both fields, even if only one changed).
+// ---------------------------------------------------------------------------
+router.patch('/delivery-economics', async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.sub;
+  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
+
+  const { doordash_commission_bps, doordash_flat_fee_cents } = req.body ?? {};
+
+  // At least one field must be present.
+  if (doordash_commission_bps === undefined && doordash_flat_fee_cents === undefined) {
+    return res.status(400).json({
+      data: null,
+      error: 'At least one of doordash_commission_bps or doordash_flat_fee_cents is required',
+    });
+  }
+
+  // Validate each provided field.
+  if (doordash_commission_bps !== undefined) {
+    if (
+      !Number.isInteger(doordash_commission_bps) ||
+      doordash_commission_bps < 0 ||
+      doordash_commission_bps > 5000
+    ) {
+      return res.status(400).json({
+        data: null,
+        error: 'doordash_commission_bps must be an integer between 0 and 5000',
+      });
+    }
+  }
+
+  if (doordash_flat_fee_cents !== undefined) {
+    if (
+      !Number.isInteger(doordash_flat_fee_cents) ||
+      doordash_flat_fee_cents < 0 ||
+      doordash_flat_fee_cents > 2000
+    ) {
+      return res.status(400).json({
+        data: null,
+        error: 'doordash_flat_fee_cents must be an integer between 0 and 2000',
+      });
+    }
+  }
+
+  // Reject any unexpected fields in the body.
+  const allowedFields = new Set(['doordash_commission_bps', 'doordash_flat_fee_cents']);
+  const bodyKeys = Object.keys(req.body ?? {});
+  const unknownFields = bodyKeys.filter((k) => !allowedFields.has(k));
+  if (unknownFields.length > 0) {
+    return res.status(400).json({
+      data: null,
+      error: `Unknown field(s): ${unknownFields.join(', ')}`,
+    });
+  }
+
+  // Resolve the restaurant id from the authenticated user — never trust a
+  // client-supplied id (cross-tenant safety).
+  const { data: restaurant, error: rErr } = await supabase
+    .from('restaurants')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (rErr || !restaurant) {
+    return res.status(404).json({ data: null, error: 'Restaurant not found' });
+  }
+
+  // Build the update payload from only the validated fields that were provided.
+  const updates: Record<string, number> = {};
+  if (doordash_commission_bps !== undefined) updates.doordash_commission_bps = doordash_commission_bps;
+  if (doordash_flat_fee_cents !== undefined) updates.doordash_flat_fee_cents = doordash_flat_fee_cents;
+
+  const { data: updated, error: uErr } = await supabase
+    .from('restaurants')
+    .update(updates)
+    .eq('id', restaurant.id)
+    .select('doordash_commission_bps, doordash_flat_fee_cents')
+    .single();
+
+  if (uErr || !updated) {
+    console.error('[delivery-economics] update failed:', uErr?.message);
+    return res.status(500).json({ data: null, error: 'Failed to update delivery economics' });
+  }
+
+  return res.json({ data: updated, error: null });
 });
 
 export default router;
