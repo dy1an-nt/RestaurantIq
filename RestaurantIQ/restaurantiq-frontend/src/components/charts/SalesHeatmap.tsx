@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatCents } from '../../lib/format';
 
 interface HeatmapDataPoint {
   day: number;   // 0 = Sunday … 6 = Saturday
@@ -24,9 +25,6 @@ const formatHour = (h: number): string => {
   if (h === 12) return '12pm';
   return h < 12 ? `${h}am` : `${h - 12}pm`;
 };
-
-const formatDollars = (cents: number): string =>
-  `$${(cents / 100).toFixed(2)}`;
 
 /** Bucket an order count into one of 3 navy shades by share of the busiest hour. */
 const orderColor = (orders: number, maxOrders: number): string => {
@@ -96,7 +94,7 @@ const SalesHeatmap = ({ data, loading }: Props) => {
             {DAY_LABELS[tooltip.day]} · {formatHour(tooltip.hour)}
           </div>
           <div>Orders: <span className="font-semibold">{tooltip.orders}</span></div>
-          <div>Revenue: <span className="font-semibold">{formatDollars(tooltip.revenue_cents)}</span></div>
+          <div>Revenue: <span className="font-semibold">{formatCents(tooltip.revenue_cents)}</span></div>
         </div>
       )}
 

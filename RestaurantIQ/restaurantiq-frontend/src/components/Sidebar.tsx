@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { useRestaurant } from './restaurant/RestaurantContext';
 import { useUnreadAlerts } from '../lib/useUnreadAlerts';
+import { useDevMode } from '../lib/useDevMode';
 import Icon, { IconName } from './Icons';
 import Logo from './Logo';
 
@@ -12,18 +13,43 @@ interface NavItem {
   end?: boolean;
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: 'dashboard', end: true },
-  { label: 'Analytics', path: '/analytics', icon: 'analytics' },
-  { label: 'Margins', path: '/margins', icon: 'margins' },
-  { label: 'Channel Margins', path: '/channel-margins', icon: 'channels' },
-  { label: 'RIQ Advisor', path: '/ai', icon: 'insights' },
-  { label: 'Alerts', path: '/alerts', icon: 'alerts' },
-  { label: 'Marketing', path: '/marketing', icon: 'marketing' },
-  { label: 'Integrations', path: '/integrations', icon: 'integrations' },
-  { label: 'Sync Health', path: '/sync-health', icon: 'sync' },
-  { label: 'Purchasing Advisor', path: '/advisor', icon: 'advisor' },
+interface NavSection {
+  heading: string;
+  items: NavItem[];
+}
+
+// Grouped, owner-first navigation (Sprint S). Channel Margins is folded into the
+// Margins page (tabs); Sync Health is developer-only (appended below when dev
+// mode is on); the two "Advisor" items are renamed so their purpose is obvious.
+const navSections: NavSection[] = [
+  {
+    heading: 'Overview',
+    items: [
+      { label: 'Dashboard', path: '/', icon: 'dashboard', end: true },
+      { label: 'Analytics', path: '/analytics', icon: 'analytics' },
+      { label: 'Margins', path: '/margins', icon: 'margins' },
+      { label: 'Alerts', path: '/alerts', icon: 'alerts' },
+    ],
+  },
+  {
+    heading: 'Tools',
+    items: [
+      { label: 'AI Assistant', path: '/ai', icon: 'insights' },
+      { label: 'Forecast', path: '/advisor', icon: 'advisor' },
+      { label: 'Marketing', path: '/marketing', icon: 'marketing' },
+    ],
+  },
+  {
+    heading: 'Setup',
+    items: [{ label: 'Integrations', path: '/integrations', icon: 'integrations' }],
+  },
 ];
+
+// Revealed only when developer mode is enabled in Settings.
+const developerSection: NavSection = {
+  heading: 'Developer',
+  items: [{ label: 'Sync Health', path: '/sync-health', icon: 'sync' }],
+};
 
 /** Two-letter initials from a restaurant name ("Bella Trattoria" → "BT"). */
 function initials(name: string | undefined): string {
@@ -38,9 +64,12 @@ const Sidebar = () => {
   const { signOut } = useAuth();
   const { restaurant } = useRestaurant();
   const unread = useUnreadAlerts();
+  const [devMode] = useDevMode();
 
   const source = restaurant?.pos_connected ? 'Square' : 'Not connected';
   const metaLine = [restaurant?.location, source].filter(Boolean).join(' · ');
+
+  const sections = devMode ? [...navSections, developerSection] : navSections;
 
   return (
     <aside className="w-[248px] flex-shrink-0 bg-surface border-r border-line flex flex-col h-screen sticky top-0 z-10">
@@ -52,59 +81,63 @@ const Sidebar = () => {
         </span>
       </div>
 
-      {/* Section label */}
-      <div className="px-[14px] pt-1 pb-1.5 mt-1.5 text-[11px] font-bold tracking-[0.09em] uppercase text-ink-3">
-        Overview
-      </div>
-
       {/* Nav */}
-      <nav className="px-[14px] py-1.5 flex flex-col gap-[3px] flex-1">
-        {navItems.map((item) => {
-          const showBadge = item.path === '/alerts' && unread > 0;
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              className={({ isActive }) =>
-                `group relative flex items-center gap-3 px-3 py-[9px] rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
-                  isActive
-                    ? 'bg-navy-700 text-white'
-                    : 'text-ink-2 hover:bg-navy-50 hover:text-ink'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon
-                    name={item.icon}
-                    size={19}
-                    className={
-                      isActive ? 'text-white' : 'text-ink-3 group-hover:text-navy-600'
-                    }
-                  />
-                  <span>{item.label}</span>
-                  {showBadge && (
-                    <span
-                      className={`ml-auto inline-flex items-center justify-center min-w-[19px] h-[19px] px-[5px] rounded-[10px] text-[11px] font-bold ${
-                        isActive ? 'bg-white/[0.18] text-white' : 'bg-neg-bg text-neg'
-                      }`}
-                    >
-                      {unread}
-                    </span>
+      <nav aria-label="Primary" className="px-[14px] py-1.5 flex flex-col gap-1 flex-1 overflow-y-auto">
+        {sections.map((section) => (
+          <div key={section.heading} className="flex flex-col gap-[3px]">
+            <div className="px-[6px] pt-2.5 pb-1 text-[11px] font-bold tracking-[0.09em] uppercase text-ink-3">
+              {section.heading}
+            </div>
+            {section.items.map((item) => {
+              const showBadge = item.path === '/alerts' && unread > 0;
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `group relative flex items-center gap-3 px-3 py-[9px] rounded-lg text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 ${
+                      isActive
+                        ? 'bg-navy-700 text-white'
+                        : 'text-ink-2 hover:bg-navy-50 hover:text-ink'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <Icon
+                        name={item.icon}
+                        size={19}
+                        className={
+                          isActive ? 'text-white' : 'text-ink-3 group-hover:text-navy-600'
+                        }
+                      />
+                      <span>{item.label}</span>
+                      {showBadge && (
+                        <span
+                          aria-label={`${unread} unread`}
+                          className={`ml-auto inline-flex items-center justify-center min-w-[19px] h-[19px] px-[5px] rounded-[10px] text-[11px] font-bold ${
+                            isActive ? 'bg-white/[0.18] text-white' : 'bg-neg-bg text-neg'
+                          }`}
+                        >
+                          {unread}
+                        </span>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </NavLink>
-          );
-        })}
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}
       <div className="p-[14px] border-t border-line flex flex-col gap-1">
         <NavLink
-          to="/integrations"
-          className="flex items-center gap-[11px] px-[10px] py-[9px] rounded-[9px] border border-line hover:bg-canvas transition-colors"
+          to="/settings"
+          aria-label="Settings and account"
+          className="flex items-center gap-[11px] px-[10px] py-[9px] rounded-[9px] border border-line hover:bg-canvas transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
         >
           <span className="w-[30px] h-[30px] rounded-lg bg-navy-700 text-white text-xs font-extrabold flex items-center justify-center flex-shrink-0">
             {initials(restaurant?.name)}
@@ -122,7 +155,7 @@ const Sidebar = () => {
 
         <button
           onClick={() => signOut()}
-          className="flex items-center gap-3 px-3 py-[9px] rounded-lg text-[13.5px] font-semibold text-ink-3 hover:bg-canvas hover:text-ink-2 transition-colors"
+          className="flex items-center gap-3 px-3 py-[9px] rounded-lg text-[13.5px] font-semibold text-ink-3 hover:bg-canvas hover:text-ink-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
         >
           <Icon name="signout" size={18} />
           <span>Sign out</span>

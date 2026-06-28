@@ -1,29 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
-import { JWTPayload } from 'jose';
 import { supabase } from '../db';
 
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
-
+/**
+ * Per-day chat message cap. Mounted after requireRestaurant, so the tenant is
+ * already resolved on req.restaurantId — this middleware no longer repeats the
+ * user→restaurant lookup, it just counts today's messages against the cap.
+ */
 export async function chatDailyCap(
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const userId = req.user?.sub;
-  if (!userId) {
-    res.status(401).json({ data: null, error: 'Unauthorized' });
-    return;
-  }
-
-  const { data: restaurant } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (!restaurant) {
+  const restaurantId = req.restaurantId;
+  if (!restaurantId) {
     res.status(404).json({ data: null, error: 'Restaurant not found' });
     return;
   }
@@ -34,7 +23,7 @@ export async function chatDailyCap(
   const { count } = await supabase
     .from('chat_messages')
     .select('id', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', restaurantId)
     .eq('role', 'user')
     .gte('created_at', midnight.toISOString());
 

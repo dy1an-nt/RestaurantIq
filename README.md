@@ -30,12 +30,12 @@ A restaurant owner connects their Square POS and DoorDash account once. From tha
 |---|---|
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
 | Backend | Node.js, Express, TypeScript |
-| Database | PostgreSQL via Supabase (23 migrations) |
+| Database | PostgreSQL via Supabase (25 migrations) |
 | Auth | Supabase Auth + custom JWT middleware (JWKS) |
 | AI | Anthropic Claude API (forced tool use, prompt caching) |
 | Integrations | Square Node SDK, DoorDash OAuth2 API |
 | Hosting | Railway (backend) + Vercel (frontend) |
-| Testing | Jest — 9 suites, 95 tests |
+| Testing | Jest — 15 suites, 167 tests (CI-gated) |
 
 ```mermaid
 graph LR
@@ -51,7 +51,7 @@ graph LR
     end
 
     subgraph Supabase["Supabase"]
-        Postgres[("PostgreSQL\n23 migrations")]
+        Postgres[("PostgreSQL\n25 migrations")]
         Auth["Auth / JWKS"]
     end
 
@@ -141,7 +141,7 @@ Every protected route validates a JWT against Supabase's JWKS endpoint. Every da
 
 ### Schema evolution
 
-23 forward-only SQL migrations in `restaurantiq-backend/migrations/`. A custom migration runner (`src/scripts/migrate.ts`) applies them in order and records each in a `schema_migrations` table. No ORM — raw SQL throughout so every index, constraint, and query is explicit.
+25 forward-only SQL migrations in `restaurantiq-backend/migrations/`. A custom migration runner (`src/scripts/migrate.ts`) applies them in order and records each in a `schema_migrations` table. No ORM: the schema is hand-written SQL — every index and constraint explicit — while application queries use Supabase's PostgREST query builder (raw `pg` is reserved for the migration runner and the advisory-lock scheduler).
 
 ---
 
@@ -182,7 +182,7 @@ RestaurantIQ/
 
 **CQRS in miniature on the advisor.** `GET /forecast` never recomputes — it's a cache read. `POST /forecast/refresh` is the only path that runs Claude, and it's rate-limited. Page-load cost and a 12-second wait during navigation are different failure modes; the button label "Generating…" is a feature.
 
-**No ORM.** Every query is raw SQL. Every index, constraint, and query plan is visible and intentional. The 23-migration history is the schema's changelog.
+**No ORM.** The schema is hand-written SQL — every index and constraint explicit — and application queries go through Supabase's PostgREST query builder rather than an ORM's entity graph (raw `pg` is reserved for the migration runner and the advisory-lock scheduler). The 25-migration history is the schema's changelog.
 
 ---
 
@@ -248,7 +248,7 @@ npm run dev                   # http://localhost:5173
 **Running tests:**
 ```bash
 cd restaurantiq-backend
-npm test              # 9 suites, 95 tests
+npm test              # 15 suites, 167 tests
 ```
 
 ---

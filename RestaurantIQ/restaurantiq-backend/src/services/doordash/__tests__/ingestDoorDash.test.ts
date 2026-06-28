@@ -15,8 +15,6 @@
  *   - revenue in daily_summaries reconciles with the source orders
  *   - re-running the sync is idempotent (no duplicate rows, no inflated metrics)
  */
-import { createFakeSupabase } from '../../ingestion/__tests__/fakeSupabase';
-
 jest.mock('../../../db', () => {
   const { createFakeSupabase: make } = require('../../ingestion/__tests__/fakeSupabase');
   return { supabase: make() };

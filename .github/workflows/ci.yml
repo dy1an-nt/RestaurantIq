@@ -1,0 +1,70 @@
+name: CI
+
+# Quality gate for RestaurantIQ (added in Sprint R).
+#
+# Before this existed, nothing ran the tests, typecheck, lint, or audit before
+# code reached main — which is how a red test suite and a dead lint script
+# landed unnoticed. This workflow makes those gates mandatory on every push and
+# pull request so broken code is rejected automatically instead of relying on
+# the author remembering to run them.
+#
+# The repo is doubly-nested (git root → RestaurantIQ/ → app packages), so each
+# job sets its own working-directory and cache path accordingly.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref so a fresh push doesn't queue behind a
+# stale one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (typecheck · lint · test · audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RestaurantIQ/restaurantiq-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RestaurantIQ/restaurantiq-backend/package-lock.json
+      - name: Install (clean, lockfile-pinned)
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Audit production dependencies (fail on high+)
+        run: npm audit --omit=dev --audit-level=high
+
+  frontend:
+    name: Frontend (typecheck · lint · audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RestaurantIQ/restaurantiq-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RestaurantIQ/restaurantiq-frontend/package-lock.json
+      - name: Install (clean, lockfile-pinned)
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Audit production dependencies (fail on high+)
+        run: npm audit --omit=dev --audit-level=high

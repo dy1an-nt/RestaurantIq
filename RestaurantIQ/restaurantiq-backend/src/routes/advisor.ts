@@ -1,44 +1,22 @@
 import { Router, Request, Response } from 'express';
-import { JWTPayload } from 'jose';
-import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { requireRestaurant } from '../middleware/requireRestaurant';
 import { createAiRateLimiter } from '../middleware/rateLimit';
 import { fetchForecastInputs, buildForecast } from '../services/forecastService';
 import { generateForecastNarrative } from '../services/forecastNarrativeService';
 import { getFreshForecast, saveForecast } from '../services/forecastCacheRepo';
 
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
-
 const router = Router();
 router.use(authMiddleware);
-
-const FORECAST_TTL_MS = 24 * 60 * 60 * 1000;
-
-async function getRestaurant(userId: string) {
-  const { data, error } = await supabase
-    .from('restaurants')
-    .select('id, name')
-    .eq('user_id', userId)
-    .single();
-  if (error || !data) return null;
-  return data as { id: string; name: string };
-}
+router.use(requireRestaurant());
 
 // GET /api/advisor/forecast
-router.get('/forecast', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.get('/forecast', async (req: Request, res: Response) => {
   const ttlHours = Math.min(168, Math.max(1, parseInt(String(req.query.ttlHours ?? '24'), 10)));
   const ttlMs = ttlHours * 60 * 60 * 1000;
 
   try {
-    const cached = await getFreshForecast(restaurant.id, ttlMs);
+    const cached = await getFreshForecast(req.restaurantId!, ttlMs);
     if (cached) {
       return res.json({ data: { cached: true, ...cached.payload }, error: null });
     }
@@ -49,13 +27,7 @@ router.get('/forecast', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/advisor/forecast/refresh
-router.post('/forecast/refresh', createAiRateLimiter(), async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.post('/forecast/refresh', createAiRateLimiter(), async (req: Request, res: Response) => {
   const trailingDays = Math.min(56, Math.max(14, parseInt(String(req.body.trailingDays ?? '28'), 10)));
   const projectionDays = Math.min(14, Math.max(1, parseInt(String(req.body.projectionDays ?? '7'), 10)));
 
@@ -67,7 +39,7 @@ router.post('/forecast/refresh', createAiRateLimiter(), async (req: AuthRequest,
   }
 
   try {
-    const inputs = await fetchForecastInputs(restaurant.id);
+    const inputs = await fetchForecastInputs(req.restaurantId!);
     const forecast = buildForecast(inputs, trailingDays, projectionDays);
 
     if (forecast.items.length === 0) {
@@ -89,7 +61,7 @@ router.post('/forecast/refresh', createAiRateLimiter(), async (req: AuthRequest,
     };
 
     await saveForecast(
-      restaurant.id,
+      req.restaurantId!,
       payload as unknown as Record<string, unknown>,
       { input: inputTokens, output: outputTokens },
       trailingDays,

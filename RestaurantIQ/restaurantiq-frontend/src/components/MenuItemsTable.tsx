@@ -4,6 +4,7 @@ import { apiFetch } from '../lib/api';
 import { useRestaurant } from './restaurant/RestaurantContext';
 import EditMenuItemModal, { MenuItemPatch } from './EditMenuItemModal';
 import Icon, { IconName } from './Icons';
+import { formatCents } from '../lib/format';
 
 interface MenuItem {
   id: string;
@@ -16,7 +17,7 @@ interface MenuItem {
   trend: 'up' | 'down' | 'flat';
 }
 
-const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const fmt = formatCents;
 
 const TrendBadge = ({ trend }: { trend: MenuItem['trend'] }) => {
   const map: Record<MenuItem['trend'], { label: string; icon: IconName; cls: string }> = {

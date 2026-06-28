@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { relativeTime } from '../lib/format';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
 // ---------- types ----------------------------------------------------------
@@ -66,20 +67,6 @@ interface SyncMetricsData {
 }
 
 // ---------- helpers --------------------------------------------------------
-
-const relativeTime = (iso: string | null): string => {
-  if (!iso) return 'never';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return 'never';
-  const diffMs = Date.now() - then;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-};
 
 const formatDuration = (ms: number | null): string => {
   if (ms === null) return '—';

@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../../db';
 import { authMiddleware } from '../../middleware/auth';
+import { requireRestaurant } from '../../middleware/requireRestaurant';
 import { Provider, SyncStatus } from '../../services/syncScheduler';
-import { isLeader, INSTANCE_ID } from '../../services/scheduler/leaderElection';
+import { isLeader } from '../../services/scheduler/leaderElection';
 import {
   getRestaurantSyncMetrics,
   getRecentJobs,
@@ -13,6 +14,13 @@ import { countPendingRetries } from '../../services/scheduler/syncJobs';
 const router = Router();
 
 router.use(authMiddleware);
+// Both routes derive connection state from the restaurant row, so resolve it
+// (with the connection columns) once here.
+router.use(
+  requireRestaurant(
+    'id, pos_connected, square_location_id, delivery_connected, doordash_store_id',
+  ),
+);
 
 interface ProviderHealth {
   provider: Provider;
@@ -37,22 +45,13 @@ interface ProviderHealth {
  * status row yet falls back to connected/disconnected based on the row.
  */
 router.get('/sync-status', async (req: Request, res: Response) => {
-  const userId = (req as any).user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { data: restaurant, error: restErr } = await supabase
-    .from('restaurants')
-    .select('id, pos_connected, square_location_id, delivery_connected, doordash_store_id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (restErr) {
-    console.error('[sync-status] restaurant lookup failed:', restErr.message);
-    return res.status(500).json({ data: null, error: 'Failed to load integration health' });
-  }
-  if (!restaurant) {
-    return res.status(404).json({ data: null, error: 'No restaurant for this user' });
-  }
+  const restaurant = req.restaurant as {
+    id: string;
+    pos_connected: boolean;
+    square_location_id: string | null;
+    delivery_connected: boolean;
+    doordash_store_id: string | null;
+  };
 
   const { data: statusRows, error: statusErr } = await supabase
     .from('integration_sync_status')
@@ -107,25 +106,14 @@ router.get('/sync-status', async (req: Request, res: Response) => {
  * rename fields without also updating the frontend contract.
  */
 router.get('/sync-metrics', async (req: Request, res: Response) => {
-  const userId = (req as any).user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  // ── Tenant lookup ──────────────────────────────────────────────────────────
-  const { data: restaurant, error: restErr } = await supabase
-    .from('restaurants')
-    .select('id, pos_connected, square_location_id, delivery_connected, doordash_store_id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (restErr) {
-    console.error('[sync-metrics] restaurant lookup failed:', restErr.message);
-    return res.status(500).json({ data: null, error: 'Failed to load sync metrics' });
-  }
-  if (!restaurant) {
-    return res.status(404).json({ data: null, error: 'No restaurant for this user' });
-  }
-
-  const restaurantId = (restaurant as any).id as string;
+  const restaurant = req.restaurant as {
+    id: string;
+    pos_connected: boolean;
+    square_location_id: string | null;
+    delivery_connected: boolean;
+    doordash_store_id: string | null;
+  };
+  const restaurantId = restaurant.id;
 
   // ── Parallel data fetch ────────────────────────────────────────────────────
   const [

@@ -63,10 +63,11 @@ export default function Advisor() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Purchasing Advisor</h1>
-          {forecast?.generated_at && (
-            <p className="text-sm text-gray-400 mt-0.5">Last updated {relativeTime(forecast.generated_at)}</p>
-          )}
+          <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Demand Forecast</h1>
+          <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
+            Projected demand for the next 7 days to guide purchasing
+            {forecast?.generated_at && <> · Last updated {relativeTime(forecast.generated_at)}</>}
+          </p>
         </div>
         <button
           onClick={handleRefresh}

@@ -1,10 +1,49 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
 
 const router = Router();
 
 router.use(authMiddleware);
+
+// Editable fields on a menu item. Every field is optional, but at least one
+// must be present, and each is normalized to exactly what the DB should store
+// (trim name; empty category → null; cost_cents a non-negative integer or null).
+// This replaces ~60 lines of hand-rolled per-field validation in the handler.
+const updateMenuItemSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, 'name cannot be empty')
+      .max(200, 'name must be 200 characters or fewer')
+      .optional(),
+    category: z
+      .string()
+      .max(100, 'category must be 100 characters or fewer')
+      .nullable()
+      .optional()
+      .transform((v) => {
+        if (v === undefined || v === null) return v;
+        const t = v.trim();
+        return t.length === 0 ? null : t;
+      }),
+    cost_cents: z
+      .number()
+      .finite('cost_cents must be a finite number')
+      .int('cost_cents must be an integer (no decimals)')
+      .min(0, 'cost_cents must be zero or greater')
+      .max(100000000, 'cost_cents must not exceed 100000000 ($1,000,000)')
+      .nullable()
+      .optional(),
+  })
+  .refine(
+    (b) =>
+      b.name !== undefined || b.category !== undefined || b.cost_cents !== undefined,
+    { message: 'No fields to update' },
+  );
 
 router.get('/:restaurantId/menu-items', async (req: Request, res: Response) => {
   const { restaurantId } = req.params;
@@ -87,7 +126,10 @@ router.get('/:restaurantId/menu-items', async (req: Request, res: Response) => {
   return res.json({ data, error: null });
 });
 
-router.patch('/:restaurantId/menu-items/:itemId', async (req: Request, res: Response) => {
+router.patch(
+  '/:restaurantId/menu-items/:itemId',
+  validateBody(updateMenuItemSchema),
+  async (req: Request, res: Response) => {
   const { restaurantId, itemId } = req.params;
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
@@ -108,67 +150,13 @@ router.patch('/:restaurantId/menu-items/:itemId', async (req: Request, res: Resp
     return res.status(403).json({ data: null, error: 'Restaurant not found or access denied' });
   }
 
-  const { name, category, cost_cents } = req.body;
-
-  // At least one field must be present
-  if (name === undefined && category === undefined && cost_cents === undefined) {
-    return res.status(400).json({ data: null, error: 'No fields to update' });
-  }
-
+  // Body is already validated + normalized by updateMenuItemSchema; build the
+  // update payload from exactly the fields the client supplied.
+  const { name, category, cost_cents } = req.body as z.infer<typeof updateMenuItemSchema>;
   const updates: Record<string, unknown> = {};
-
-  // Validate and build name
-  if (name !== undefined) {
-    if (typeof name !== 'string') {
-      return res.status(400).json({ data: null, error: 'name must be a string' });
-    }
-    const trimmedName = name.trim();
-    if (trimmedName.length === 0) {
-      return res.status(400).json({ data: null, error: 'name cannot be empty' });
-    }
-    if (trimmedName.length > 200) {
-      return res.status(400).json({ data: null, error: 'name must be 200 characters or fewer' });
-    }
-    updates.name = trimmedName;
-  }
-
-  // Validate and build category
-  if (category !== undefined) {
-    if (category !== null && typeof category !== 'string') {
-      return res.status(400).json({ data: null, error: 'category must be a string or null' });
-    }
-    if (typeof category === 'string') {
-      if (category.length > 100) {
-        return res.status(400).json({ data: null, error: 'category must be 100 characters or fewer' });
-      }
-      const trimmedCategory = category.trim();
-      updates.category = trimmedCategory.length === 0 ? null : trimmedCategory;
-    } else {
-      updates.category = null;
-    }
-  }
-
-  // Validate and build cost_cents
-  if (cost_cents !== undefined) {
-    if (cost_cents !== null) {
-      if (typeof cost_cents !== 'number') {
-        return res.status(400).json({ data: null, error: 'cost_cents must be an integer number or null' });
-      }
-      if (!Number.isFinite(cost_cents)) {
-        return res.status(400).json({ data: null, error: 'cost_cents must be a finite number' });
-      }
-      if (!Number.isInteger(cost_cents)) {
-        return res.status(400).json({ data: null, error: 'cost_cents must be an integer (no decimals)' });
-      }
-      if (cost_cents < 0) {
-        return res.status(400).json({ data: null, error: 'cost_cents must be zero or greater' });
-      }
-      if (cost_cents > 100000000) {
-        return res.status(400).json({ data: null, error: 'cost_cents must not exceed 100000000 ($1,000,000)' });
-      }
-    }
-    updates.cost_cents = cost_cents;
-  }
+  if (name !== undefined) updates.name = name;
+  if (category !== undefined) updates.category = category;
+  if (cost_cents !== undefined) updates.cost_cents = cost_cents;
 
   const { data: updated, error: updateErr } = await supabase
     .from('menu_items')
@@ -187,6 +175,7 @@ router.patch('/:restaurantId/menu-items/:itemId', async (req: Request, res: Resp
   }
 
   return res.status(200).json({ data: updated, error: null });
-});
+  },
+);
 
 export default router;

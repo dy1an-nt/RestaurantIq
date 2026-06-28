@@ -11,8 +11,6 @@
  * Covered: order dedup, restaurant + order-item linkage, summary aggregation,
  * summary updates, cross-source isolation, idempotent writes, alert isolation.
  */
-import { createFakeSupabase } from './fakeSupabase';
-
 jest.mock('../../../db', () => {
   const { createFakeSupabase: make } = require('./fakeSupabase');
   return { supabase: make() };
@@ -265,6 +263,13 @@ describe('upsertOrders', () => {
 });
 
 describe('refreshDailySummaries', () => {
+  // Inject a fixed "now" anchored just after the seeded order dates so the
+  // 30-day rolling window deterministically covers them. Previously these tests
+  // relied on the real clock, so they passed only while the hardcoded seed dates
+  // happened to fall inside `new Date() - 30d` — and went red once the calendar
+  // moved past them. The clock is now a parameter, not an ambient dependency.
+  const NOW = new Date('2026-05-22T00:00:00.000Z');
+
   async function ingestOneDay() {
     const map = await seedAndOrder();
     return map;
@@ -289,7 +294,7 @@ describe('refreshDailySummaries', () => {
 
   it('aggregates quantity, revenue, and order counts per (item, date)', async () => {
     const map = await ingestOneDay();
-    await refreshDailySummaries(REST);
+    await refreshDailySummaries(REST, NOW);
 
     const summaries = db.__rows('daily_summaries');
     const burger = summaries.find((s) => s.menu_item_id === map.get('burger'));
@@ -313,7 +318,7 @@ describe('refreshDailySummaries', () => {
 
   it('updates summaries in place on re-run — metrics do not inflate', async () => {
     const map = await seedAndOrder();
-    await refreshDailySummaries(REST);
+    await refreshDailySummaries(REST, NOW);
     const before = db.__rows('daily_summaries').length;
 
     // Re-running ingestion of the SAME orders, then refreshing again.
@@ -322,7 +327,7 @@ describe('refreshDailySummaries', () => {
       map,
       'doordash',
     );
-    await refreshDailySummaries(REST);
+    await refreshDailySummaries(REST, NOW);
 
     const summaries = db.__rows('daily_summaries');
     expect(summaries).toHaveLength(before); // no new summary rows
@@ -331,14 +336,14 @@ describe('refreshDailySummaries', () => {
   });
 
   it('prunes stale summary rows that no longer have backing orders', async () => {
-    const map = await seedAndOrder();
-    await refreshDailySummaries(REST);
+    await seedAndOrder();
+    await refreshDailySummaries(REST, NOW);
     expect(db.__rows('daily_summaries').length).toBeGreaterThan(0);
 
     // Wipe the orders, then refresh: summaries in the window should be cleared.
     db.__tables.orders = [];
     db.__tables.order_items = [];
-    await refreshDailySummaries(REST);
+    await refreshDailySummaries(REST, NOW);
 
     expect(db.__rows('daily_summaries')).toHaveLength(0);
   });
@@ -363,7 +368,7 @@ describe('refreshDailySummaries', () => {
       'doordash',
     );
 
-    await refreshDailySummaries(REST);
+    await refreshDailySummaries(REST, NOW);
 
     const onDate = db.__rows('daily_summaries').filter((s) => s.date === '2026-05-21');
     // Two distinct menu items → two summary rows, both present (source-agnostic).

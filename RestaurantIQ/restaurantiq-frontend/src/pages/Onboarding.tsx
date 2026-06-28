@@ -32,8 +32,8 @@ const StepCircle = ({ index, current }: { index: number; current: number }) => {
     );
   }
   return (
-    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-      <span className="text-gray-500 text-sm font-semibold">{index + 1}</span>
+    <div className="w-8 h-8 rounded-full bg-line flex items-center justify-center">
+      <span className="text-ink-3 text-sm font-semibold">{index + 1}</span>
     </div>
   );
 };
@@ -44,12 +44,12 @@ const Stepper = ({ current }: { current: number }) => (
       <div key={label} className="flex items-center flex-1 last:flex-none">
         <div className="flex flex-col items-center">
           <StepCircle index={i} current={current} />
-          <span className={`mt-1 text-xs font-medium whitespace-nowrap ${i <= current ? 'text-navy-700' : 'text-gray-400'}`}>
+          <span className={`mt-1 text-xs font-medium whitespace-nowrap ${i <= current ? 'text-navy-700' : 'text-ink-3'}`}>
             {label}
           </span>
         </div>
         {i < STEPS.length - 1 && (
-          <div className={`flex-1 h-px mx-2 mb-4 ${i < current ? 'bg-navy-700' : 'bg-gray-200'}`} />
+          <div className={`flex-1 h-px mx-2 mb-4 ${i < current ? 'bg-navy-700' : 'bg-line'}`} />
         )}
       </div>
     ))}
@@ -149,14 +149,17 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-canvas">
       <div className="max-w-lg w-full px-4">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-extrabold text-gray-900">Set up your restaurant</h1>
-          <p className="mt-2 text-sm text-gray-600">Get up and running in a few steps</p>
+          <h1 className="text-3xl font-extrabold text-ink">Welcome to RestaurantIQ</h1>
+          <p className="mt-2 text-sm text-ink-3 max-w-sm mx-auto leading-relaxed">
+            Connect Square once and we'll start surfacing your menu analytics automatically.
+            Takes about two minutes — you can change anything later.
+          </p>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-8">
+        <div className="bg-surface border border-line rounded-xl shadow-sm p-8">
           <Stepper current={step} />
 
           {step === 0 && (
@@ -167,7 +170,7 @@ const Onboarding = () => {
                 </div>
               )}
               <div>
-                <label htmlFor="restaurantName" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="restaurantName" className="block text-sm font-medium text-ink-2">
                   Restaurant Name
                 </label>
                 <input
@@ -178,11 +181,11 @@ const Onboarding = () => {
                   placeholder="Your Restaurant Name"
                   value={restaurantName}
                   onChange={(e) => setRestaurantName(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500"
+                  className="mt-1 block w-full px-3 py-2 border border-line rounded-md text-sm focus:ring-navy-500 focus:border-navy-500"
                 />
               </div>
               <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="location" className="block text-sm font-medium text-ink-2">
                   Location
                 </label>
                 <input
@@ -193,7 +196,7 @@ const Onboarding = () => {
                   placeholder="123 Main St, City, State"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500"
+                  className="mt-1 block w-full px-3 py-2 border border-line rounded-md text-sm focus:ring-navy-500 focus:border-navy-500"
                 />
               </div>
               <button
@@ -213,8 +216,24 @@ const Onboarding = () => {
                   {step2Error}
                 </div>
               )}
+              {/* Where to find these — removes the biggest onboarding unknown. */}
+              <div className="bg-navy-50 border border-navy-100 rounded-md px-4 py-3 text-[13px] text-ink-2 leading-relaxed">
+                <p className="font-bold text-ink mb-1">Where do I find these?</p>
+                In your{' '}
+                <a
+                  href="https://developer.squareup.com/apps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-navy-700 hover:underline"
+                >
+                  Square Developer dashboard
+                </a>{' '}
+                open your application: the <b>Location ID</b> is under Locations, and the{' '}
+                <b>Access Token</b> under Credentials. Your token is encrypted before it's
+                stored and never shown again.
+              </div>
               <div>
-                <label htmlFor="locId" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="locId" className="block text-sm font-medium text-ink-2">
                   Location ID
                 </label>
                 <input
@@ -225,12 +244,13 @@ const Onboarding = () => {
                   value={locationId}
                   disabled={step2Loading}
                   onChange={(e) => setLocationId(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
+                  className="mt-1 block w-full px-3 py-2 border border-line rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-[12px] text-ink-3">The location whose sales you want to analyze.</p>
               </div>
               <div>
-                <label htmlFor="accessToken" className="block text-sm font-medium text-gray-700">
-                  Sandbox Access Token
+                <label htmlFor="accessToken" className="block text-sm font-medium text-ink-2">
+                  Access Token
                 </label>
                 <input
                   id="accessToken"
@@ -241,8 +261,9 @@ const Onboarding = () => {
                   value={accessToken}
                   disabled={step2Loading}
                   onChange={(e) => setAccessToken(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
+                  className="mt-1 block w-full px-3 py-2 border border-line rounded-md text-sm focus:ring-navy-500 focus:border-navy-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-[12px] text-ink-3">Encrypted at rest. We never display it back.</p>
               </div>
               <button
                 type="submit"
@@ -263,7 +284,7 @@ const Onboarding = () => {
 
           {step === 2 && (
             <div className="space-y-5">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-ink-3">
                 Syncing pulls your Square catalog and the last 30 days of orders so RestaurantIQ can start surfacing analytics and insights.
               </p>
               {syncError && (

@@ -183,7 +183,6 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
   // 2. Orders
   const orderRows: NormalizedOrder[] = [];
   let orderCursor: string | undefined;
-  let ordersOk = true;
   try {
     do {
       const { result } = await client.ordersApi.searchOrders({
@@ -201,7 +200,6 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
       orderCursor = result.cursor;
     } while (orderCursor);
   } catch (err) {
-    ordersOk = false;
     console.error('[square] searchOrders failed:', (err as Error).message);
   }
 

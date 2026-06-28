@@ -4,6 +4,8 @@ import { apiFetch } from '../lib/api';
 import RevenueTrendChart from '../components/charts/RevenueTrendChart';
 import TopItemsChart from '../components/charts/TopItemsChart';
 import SalesHeatmap from '../components/charts/SalesHeatmap';
+import LastSyncedIndicator from '../components/LastSyncedIndicator';
+import InfoTooltip from '../components/InfoTooltip';
 
 interface RevenueTrendPoint {
   date: string;
@@ -70,11 +72,14 @@ const Analytics = () => {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-[22px]">
-        <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Analytics</h1>
-        <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
-          Revenue · Top items · Busiest hours · Last 30 days
-        </p>
+      <div className="mb-[22px] flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Analytics</h1>
+          <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
+            Revenue · Top items · Busiest hours · Last 30 days
+          </p>
+        </div>
+        <LastSyncedIndicator />
       </div>
 
       {error && (
@@ -101,7 +106,10 @@ const Analytics = () => {
           {/* Revenue Trend — full width */}
           <div className="bg-surface border border-line rounded px-[22px] py-5">
             <div className="flex items-baseline justify-between gap-3 mb-1.5">
-              <h2 className="text-base font-bold text-ink whitespace-nowrap">Revenue Trend</h2>
+              <h2 className="text-base font-bold text-ink whitespace-nowrap inline-flex items-center gap-1.5">
+                Revenue Trend
+                <InfoTooltip text="Daily menu-item revenue (quantity × item price) over the last 30 days." />
+              </h2>
             </div>
             <div className="flex gap-4 my-2.5 text-xs font-semibold text-ink-2">
               <span className="inline-flex items-center gap-[7px]">
@@ -114,11 +122,17 @@ const Analytics = () => {
           {/* Top items | Busiest hours */}
           <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px]">
             <div className="bg-surface border border-line rounded px-[22px] py-5">
-              <h2 className="text-base font-bold text-ink mb-1.5">Top Items by Revenue</h2>
+              <h2 className="text-base font-bold text-ink mb-1.5 inline-flex items-center gap-1.5">
+                Top Items by Revenue
+                <InfoTooltip text="Ranked by menu-item revenue (quantity × item price) over the last 30 days." />
+              </h2>
               <TopItemsChart data={dashboard?.topItems} loading={loading} />
             </div>
             <div className="bg-surface border border-line rounded px-[22px] py-5">
-              <h2 className="text-base font-bold text-ink mb-1.5">Busiest Hours</h2>
+              <h2 className="text-base font-bold text-ink mb-1.5 inline-flex items-center gap-1.5">
+                Busiest Hours
+                <InfoTooltip text="Order volume and revenue by day and hour, using whole-order totals (which can include tax and tips), not item-level revenue." />
+              </h2>
               <SalesHeatmap data={dashboard?.hourlyDistribution} loading={loading} />
             </div>
           </div>

@@ -1,12 +1,27 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { supabase } from '../../db';
 import { authMiddleware } from '../../middleware/auth';
+import { validateBody } from '../../middleware/validate';
 import { isMockMode } from '../../services/doordash/doordashClient';
 import { encryptToken } from '../../lib/tokenCrypto';
 import { syncIntegration } from '../../services/syncScheduler';
 
 const DOORDASH_CREDS_SELECT =
   'id, pos_connected, square_location_id, square_access_token, square_refresh_token, square_token_expires_at, delivery_connected, doordash_store_id, doordash_access_token, doordash_refresh_token, doordash_token_expires_at';
+
+// Connect persists the DoorDash store id + (encrypted) tokens; expires_in is
+// coerced so a numeric string is accepted as before. Disconnect and sync only
+// need the tenant's restaurant_id.
+const connectSchema = z.object({
+  restaurant_id: z.string().min(1),
+  store_id: z.string().min(1),
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
+  expires_in: z.coerce.number().int().positive().optional(),
+});
+
+const restaurantIdSchema = z.object({ restaurant_id: z.string().min(1) });
 
 const router = Router();
 
@@ -37,18 +52,12 @@ router.get('/status', (_req: Request, res: Response) => {
  * square_access_token. Tokens are AES-GCM encrypted at rest (lib/tokenCrypto).
  * refresh_token / expires_in are optional and enable the proactive refresh flow.
  */
-router.post('/connect', async (req: Request, res: Response) => {
+router.post('/connect', validateBody(connectSchema), async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
-  const { restaurant_id, store_id, access_token, refresh_token, expires_in } = req.body ?? {};
-
-  if (!restaurant_id || !store_id || !access_token) {
-    return res.status(400).json({
-      data: null,
-      error: 'restaurant_id, store_id, and access_token are required',
-    });
-  }
+  const { restaurant_id, store_id, access_token, refresh_token, expires_in } =
+    req.body as z.infer<typeof connectSchema>;
 
   const updates: Record<string, unknown> = {
     doordash_store_id: store_id,
@@ -89,14 +98,11 @@ router.post('/connect', async (req: Request, res: Response) => {
  * sprint's connect/disconnect UI mirror needs a backing endpoint.) Existing
  * DoorDash orders/summaries are intentionally left in place.
  */
-router.post('/disconnect', async (req: Request, res: Response) => {
+router.post('/disconnect', validateBody(restaurantIdSchema), async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
-  const { restaurant_id } = req.body ?? {};
-  if (!restaurant_id) {
-    return res.status(400).json({ data: null, error: 'restaurant_id is required' });
-  }
+  const { restaurant_id } = req.body as z.infer<typeof restaurantIdSchema>;
 
   const { data, error } = await supabase
     .from('restaurants')
@@ -132,14 +138,11 @@ router.post('/disconnect', async (req: Request, res: Response) => {
  * per-restaurant lock and status bookkeeping as the scheduler — it can never
  * duplicate an in-flight scheduled run (returns 409 instead).
  */
-router.post('/sync', async (req: Request, res: Response) => {
+router.post('/sync', validateBody(restaurantIdSchema), async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
-  const { restaurant_id } = req.body ?? {};
-  if (!restaurant_id) {
-    return res.status(400).json({ data: null, error: 'restaurant_id is required' });
-  }
+  const { restaurant_id } = req.body as z.infer<typeof restaurantIdSchema>;
 
   const { data: owned, error: ownerErr } = await supabase
     .from('restaurants')

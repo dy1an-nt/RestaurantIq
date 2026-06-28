@@ -1,34 +1,19 @@
 import { Router, Request, Response } from 'express';
-import { JWTPayload } from 'jose';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { requireRestaurant } from '../middleware/requireRestaurant';
 import { createAiRateLimiter } from '../middleware/rateLimit';
 import { generateInsights, SummaryRow } from '../services/anthropicService';
 
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
-
 const router = Router();
 // Authenticate first so the rate limiter can key on the user id, then cap how
-// often this Claude-powered endpoint can be called (cost protection — Sprint N).
+// often this Claude-powered endpoint can be called (cost protection — Sprint N),
+// then resolve the caller's restaurant once for the handler.
 router.use(authMiddleware);
 router.use(createAiRateLimiter());
+router.use(requireRestaurant());
 
-router.get('/', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { data: restaurant, error: rErr } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (rErr || !restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
-
+router.get('/', async (req: Request, res: Response) => {
   const since = new Date();
   since.setDate(since.getDate() - 30);
   const sinceStr = since.toISOString().split('T')[0];
@@ -36,7 +21,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   const { data: summaries, error: sErr } = await supabase
     .from('daily_summaries')
     .select('menu_item_id, date, total_quantity, total_revenue_cents, total_orders, menu_items(name, category)')
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .gte('date', sinceStr)
     .order('date', { ascending: true });
 

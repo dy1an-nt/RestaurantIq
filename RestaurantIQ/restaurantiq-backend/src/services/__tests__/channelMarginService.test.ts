@@ -121,15 +121,12 @@ describe('commission math', () => {
   });
 
   it('uses floor for fractional commission (no rounding up)', () => {
-    // gross = 1 cent; 15% commission = floor(1 * 1500 / 10000) = 0 (not 1)
-    const items = [item({ id: 'i1', price_cents: 1, cost_cents: 0 })];
-    // cost_cents=0 → missing cost. Use cost > 0.
+    // cost_cents > 0 so the item has a real margin to tax against.
     const items2 = [item({ id: 'i1', price_cents: 100, cost_cents: 1 })];
     const orders = [order('o1', 'doordash')];
-    const ois = [orderItem('o1', 'i1', 1, 7)]; // gross = 7 cents
 
-    // 1500 bps = 15%; floor(7 * 1500 / 10000) = floor(0.105) = 0... let's pick
-    // a value that is fractional:  gross = 33 cents, 15% = 4.95 → floor = 4
+    // Pick a gross that makes the commission fractional: 33 cents at 15% =
+    // 4.95 → floor = 4, proving we floor rather than round.
     const ois2 = [orderItem('o1', 'i1', 1, 33)]; // gross = 33
 
     const result = buildChannelMarginAnalysis(items2, orders, ois2, 1500, 0);

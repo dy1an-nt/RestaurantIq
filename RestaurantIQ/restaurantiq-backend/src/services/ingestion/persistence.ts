@@ -16,7 +16,7 @@
  */
 import { supabase } from '../../db';
 import { generateAlerts } from '../alertsService';
-import { MenuItemRow, OrderItemRow, OrderRow, OrderSource, NormalizedOrder } from './types';
+import { MenuItemRow, OrderSource, NormalizedOrder } from './types';
 
 /**
  * Upsert menu items by (restaurant_id, source, external_id).
@@ -221,9 +221,17 @@ export const upsertOrders = async (
  * Uses upsert (not delete+insert) so that if the write fails, the previous
  * data is preserved. After a successful upsert, rows in the 30-day window
  * that have no current activity are deleted (stale rows from deleted items).
+ *
+ * `now` is injected (default: real clock) so the 30-day window is deterministic
+ * under test. Reading `new Date()` inline here made the window slide with the
+ * calendar, which silently rotted both the data and the tests that seeded fixed
+ * dates — inject the instant instead of coupling to the wall clock.
  */
-export const refreshDailySummaries = async (restaurantId: string): Promise<void> => {
-  const since = new Date();
+export const refreshDailySummaries = async (
+  restaurantId: string,
+  now: Date = new Date(),
+): Promise<void> => {
+  const since = new Date(now);
   since.setDate(since.getDate() - 30);
   const sinceIso = since.toISOString();
   const sinceDate = sinceIso.split('T')[0];

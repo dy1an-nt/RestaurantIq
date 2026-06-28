@@ -13,10 +13,10 @@ import Marketing from './pages/Marketing';
 import Integrations from './pages/Integrations';
 import AlertsPage from './pages/AlertsPage';
 import Analytics from './pages/Analytics';
-import MarginAnalysis from './pages/MarginAnalysis';
-import ChannelMargins from './pages/ChannelMargins';
+import Margins from './pages/Margins';
 import SyncHealth from './pages/SyncHealth';
 import Advisor from './pages/Advisor';
+import Settings from './pages/Settings';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import AlertsBanner from './components/AlertsBanner';
@@ -28,10 +28,18 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
     <RequireRestaurant>
       <div className="flex min-h-screen bg-canvas text-ink">
+        {/* Skip link: first focusable element, hidden until focused, so keyboard
+            users can jump past the nav straight to page content. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-navy-700 focus:text-white focus:text-sm focus:font-bold"
+        >
+          Skip to content
+        </a>
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <Topbar />
-          <main className="flex-1 overflow-auto px-[30px] pt-7 pb-10">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto px-[30px] pt-7 pb-10 focus:outline-none">
             <AlertsBanner />
             {children}
           </main>
@@ -69,10 +77,12 @@ function App() {
             <Route path="/integrations" element={<AppLayout><Integrations /></AppLayout>} />
             <Route path="/alerts" element={<AppLayout><AlertsPage /></AppLayout>} />
             <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
-            <Route path="/margins" element={<AppLayout><MarginAnalysis /></AppLayout>} />
-            <Route path="/channel-margins" element={<AppLayout><ChannelMargins /></AppLayout>} />
+            <Route path="/margins" element={<AppLayout><Margins /></AppLayout>} />
+            {/* Channel Margins is now the second tab of /margins. */}
+            <Route path="/channel-margins" element={<Navigate to="/margins" replace />} />
             <Route path="/sync-health" element={<AppLayout><SyncHealth /></AppLayout>} />
             <Route path="/advisor" element={<AppLayout><Advisor /></AppLayout>} />
+            <Route path="/settings" element={<AppLayout><Settings /></AppLayout>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>

@@ -11,7 +11,7 @@
 const mockQueryResults: boolean[] = [];
 let mockConnectShouldFail = false;
 let mockClientEndHandler: (() => void) | null = null;
-let mockClientErrorHandler: ((err: Error) => void) | null = null;
+let _mockClientErrorHandler: ((err: Error) => void) | null = null;
 
 const mockClientInstance = {
   connect: jest.fn(async () => {
@@ -23,7 +23,7 @@ const mockClientInstance = {
   }),
   end: jest.fn(async () => {}),
   on: jest.fn((event: string, handler: any) => {
-    if (event === 'error') mockClientErrorHandler = handler;
+    if (event === 'error') _mockClientErrorHandler = handler;
     if (event === 'end') mockClientEndHandler = handler;
   }),
 };
@@ -46,7 +46,7 @@ beforeEach(() => {
   mockQueryResults.length = 0;
   mockConnectShouldFail = false;
   mockClientEndHandler = null;
-  mockClientErrorHandler = null;
+  _mockClientErrorHandler = null;
   mockClientInstance.connect.mockClear();
   mockClientInstance.query.mockClear();
   mockClientInstance.end.mockClear();

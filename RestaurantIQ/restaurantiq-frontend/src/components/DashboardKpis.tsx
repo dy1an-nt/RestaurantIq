@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { useRestaurant } from './restaurant/RestaurantContext';
 import Icon, { IconName } from './Icons';
+import InfoTooltip from './InfoTooltip';
+import { formatCents, formatDollars } from '../lib/format';
 
 interface RevenueTrendPoint {
   date: string;
@@ -22,18 +24,22 @@ interface Kpi {
   label: string;
   value: string;
   icon: IconName;
+  /** Short explanation of what the number means and where it comes from. */
+  tooltip: string;
 }
 
-const dollars = (cents: number) =>
-  `$${Math.round(cents / 100).toLocaleString('en-US')}`;
-const dollarsCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const dollars = formatDollars;
+const dollarsCents = formatCents;
 
 const KpiCard = ({ kpi }: { kpi: Kpi }) => (
   <div className="bg-surface border border-line rounded shadow-sm p-[18px]">
     <div className="w-9 h-9 rounded-[9px] bg-navy-50 text-navy-700 flex items-center justify-center mb-[14px]">
       <Icon name={kpi.icon} size={19} />
     </div>
-    <div className="text-[11px] font-bold tracking-[0.07em] uppercase text-ink-3">{kpi.label}</div>
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] font-bold tracking-[0.07em] uppercase text-ink-3">{kpi.label}</span>
+      <InfoTooltip text={kpi.tooltip} label={`What is ${kpi.label}?`} />
+    </div>
     <div className="mt-2 text-[26px] font-extrabold tracking-[-0.02em] text-ink tnum">{kpi.value}</div>
   </div>
 );
@@ -77,10 +83,31 @@ const DashboardKpis = () => {
         }
 
         setKpis([
-          { label: '30-Day Revenue', value: dollars(revenue), icon: 'margins' },
-          { label: 'Orders', value: orders.toLocaleString('en-US'), icon: 'analytics' },
-          { label: 'Avg. Order Value', value: dollarsCents(aov), icon: 'dashboard' },
-          { label: 'Items Tracked', value: itemCount.toLocaleString('en-US'), icon: 'integrations' },
+          {
+            label: '30-Day Revenue',
+            value: dollars(revenue),
+            icon: 'margins',
+            tooltip:
+              'Menu-item sales (quantity × item price) over the last 30 days. May differ from your POS gross total, which can also include tax, tips, and discounts.',
+          },
+          {
+            label: 'Orders',
+            value: orders.toLocaleString('en-US'),
+            icon: 'analytics',
+            tooltip: 'Number of orders in the last 30 days across all connected channels (Square + DoorDash).',
+          },
+          {
+            label: 'Avg. Order Value',
+            value: dollarsCents(aov),
+            icon: 'dashboard',
+            tooltip: '30-day menu revenue divided by the number of orders in the same window.',
+          },
+          {
+            label: 'Items Tracked',
+            value: itemCount.toLocaleString('en-US'),
+            icon: 'integrations',
+            tooltip: 'Distinct menu items synced from your connected POS and delivery integrations.',
+          },
         ]);
       } catch {
         if (!cancelled) setKpis([]); // peripheral — fail quietly

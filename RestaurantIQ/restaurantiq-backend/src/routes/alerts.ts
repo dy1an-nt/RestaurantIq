@@ -1,49 +1,24 @@
 import { Router, Request, Response } from 'express';
-import { JWTPayload } from 'jose';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
-
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
+import { requireRestaurant } from '../middleware/requireRestaurant';
 
 const router = Router();
 router.use(authMiddleware);
-
-/**
- * Look up the restaurant that belongs to a given Supabase user.
- * Returns null if not found.
- */
-const getRestaurantByUserId = async (
-  userId: string,
-): Promise<{ id: string } | null> => {
-  const { data, error } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-  if (error || !data) return null;
-  return data as { id: string };
-};
+// Every route below operates on the caller's own restaurant, so resolve it once
+// here (sets req.restaurantId / 404s if absent) instead of per-handler.
+router.use(requireRestaurant());
 
 // ---------------------------------------------------------------------------
 // GET /api/alerts
 // Returns the 50 most recent alerts for the authenticated user's restaurant.
 // ---------------------------------------------------------------------------
-router.get('/', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurantByUserId(userId);
-  if (!restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
-
+router.get('/', async (req: Request, res: Response) => {
   try {
     const { data: alerts, error } = await supabase
       .from('alerts')
       .select('*')
-      .eq('restaurant_id', restaurant.id)
+      .eq('restaurant_id', req.restaurantId!)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -65,20 +40,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // MUST be registered before /:id/read to prevent Express matching "read-all"
 // as the :id param.
 // ---------------------------------------------------------------------------
-router.post('/read-all', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurantByUserId(userId);
-  if (!restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
-
+router.post('/read-all', async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('alerts')
       .update({ is_read: true })
-      .eq('restaurant_id', restaurant.id)
+      .eq('restaurant_id', req.restaurantId!)
       .eq('is_read', false)
       .select('id');
 
@@ -99,16 +66,8 @@ router.post('/read-all', async (req: AuthRequest, res: Response) => {
 // Marks a single alert as read. Verifies the alert belongs to the
 // authenticated user's restaurant before updating (no cross-tenant leakage).
 // ---------------------------------------------------------------------------
-router.post('/:id/read', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
+router.post('/:id/read', async (req: Request, res: Response) => {
   const alertId = req.params.id;
-
-  const restaurant = await getRestaurantByUserId(userId);
-  if (!restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
 
   try {
     // Fetch the alert first so we can verify tenant ownership before updating.
@@ -128,7 +87,7 @@ router.post('/:id/read', async (req: AuthRequest, res: Response) => {
     }
 
     // Tenant guard: the alert must belong to the calling user's restaurant.
-    if ((existing as { id: string; restaurant_id: string }).restaurant_id !== restaurant.id) {
+    if ((existing as { id: string; restaurant_id: string }).restaurant_id !== req.restaurantId) {
       return res.status(403).json({ data: null, error: 'Forbidden' });
     }
 

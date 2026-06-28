@@ -1,36 +1,42 @@
 import { Router, Request, Response } from 'express';
-import { JWTPayload } from 'jose';
+import { z } from 'zod';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { requireRestaurant } from '../middleware/requireRestaurant';
+import { validateBody } from '../middleware/validate';
 import { createAiRateLimiter } from '../middleware/rateLimit';
 import { chatDailyCap } from '../middleware/chatDailyCap';
 import { sendMessage } from '../services/chatService';
 
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
-
 const router = Router();
 router.use(authMiddleware);
+// Resolve the caller's restaurant (id + name; name is used in the chat prompt)
+// once for every route below.
+router.use(requireRestaurant('id, name'));
 
-async function getRestaurant(userId: string) {
-  const { data, error } = await supabase
-    .from('restaurants')
-    .select('id, name')
-    .eq('user_id', userId)
-    .single();
-  if (error || !data) return null;
-  return data as { id: string; name: string };
-}
+// New conversations default their title when omitted; an explicit title is a
+// string of at most 120 chars.
+const createConversationSchema = z.object({
+  title: z.string().max(120, 'Title must be a string under 120 characters').optional(),
+});
+
+// Renaming a conversation requires a non-empty title (after trimming) ≤120 chars.
+const renameConversationSchema = z.object({
+  title: z.string().trim().min(1, 'title must be 1-120 characters').max(120, 'title must be 1-120 characters'),
+});
+
+// A chat message is a non-empty (after trimming), ≤2000-char string. The handler
+// receives the already-trimmed value.
+const sendMessageSchema = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, 'content is required')
+    .max(2000, 'content must be 2000 characters or fewer'),
+});
 
 // GET /api/chat/usage  — must come before /:id to avoid route shadowing
-router.get('/usage', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.get('/usage', async (req: Request, res: Response) => {
   const midnight = new Date();
   midnight.setUTCHours(0, 0, 0, 0);
   const nextMidnight = new Date(midnight);
@@ -39,7 +45,7 @@ router.get('/usage', async (req: AuthRequest, res: Response) => {
   const { count } = await supabase
     .from('chat_messages')
     .select('id', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .eq('role', 'user')
     .gte('created_at', midnight.toISOString());
 
@@ -56,17 +62,11 @@ router.get('/usage', async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/chat/conversations
-router.get('/conversations', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.get('/conversations', async (req: Request, res: Response) => {
   const { data: conversations, error } = await supabase
     .from('chat_conversations')
     .select('id, title, created_at, updated_at')
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .order('updated_at', { ascending: false });
 
   if (error) return res.status(500).json({ data: null, error: 'Failed to fetch conversations' });
@@ -96,21 +96,15 @@ router.get('/conversations', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/chat/conversations
-router.post('/conversations', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.post(
+  '/conversations',
+  validateBody(createConversationSchema),
+  async (req: Request, res: Response) => {
   const title = req.body.title ?? 'New conversation';
-  if (typeof title !== 'string' || title.length > 120) {
-    return res.status(400).json({ data: null, error: 'Title must be a string under 120 characters' });
-  }
 
   const { data: conversation, error } = await supabase
     .from('chat_conversations')
-    .insert({ restaurant_id: restaurant.id, title: title.trim() || 'New conversation' })
+    .insert({ restaurant_id: req.restaurantId!, title: title.trim() || 'New conversation' })
     .select('id, title, created_at, updated_at')
     .single();
 
@@ -119,21 +113,16 @@ router.post('/conversations', async (req: AuthRequest, res: Response) => {
   }
 
   return res.json({ data: { conversation }, error: null });
-});
+  },
+);
 
 // GET /api/chat/conversations/:id/messages
-router.get('/conversations/:id/messages', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.get('/conversations/:id/messages', async (req: Request, res: Response) => {
   const { data: conversation, error: convErr } = await supabase
     .from('chat_conversations')
     .select('id, title, created_at, updated_at')
     .eq('id', req.params.id)
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .maybeSingle();
 
   if (convErr || !conversation) {
@@ -156,27 +145,16 @@ router.post(
   '/conversations/:id/messages',
   createAiRateLimiter(),
   chatDailyCap,
-  async (req: AuthRequest, res: Response) => {
-    const userId = req.user?.sub;
-    if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-    const restaurant = await getRestaurant(userId);
-    if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
-    const { content } = req.body;
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
-      return res.status(400).json({ data: null, error: 'content is required' });
-    }
-    if (content.length > 2000) {
-      return res.status(400).json({ data: null, error: 'content must be 2000 characters or fewer' });
-    }
+  validateBody(sendMessageSchema),
+  async (req: Request, res: Response) => {
+    const { content } = req.body as z.infer<typeof sendMessageSchema>;
 
     try {
       const { assistantMessage, usage } = await sendMessage(
-        restaurant.id,
-        restaurant.name,
+        req.restaurantId!,
+        req.restaurant!.name as string,
         req.params.id,
-        content.trim(),
+        content,
       );
       return res.json({ data: { message: assistantMessage, usage }, error: null });
     } catch (err: unknown) {
@@ -190,23 +168,17 @@ router.post(
 );
 
 // PATCH /api/chat/conversations/:id
-router.patch('/conversations/:id', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
-  const { title } = req.body;
-  if (!title || typeof title !== 'string' || title.trim().length === 0 || title.length > 120) {
-    return res.status(400).json({ data: null, error: 'title must be 1-120 characters' });
-  }
+router.patch(
+  '/conversations/:id',
+  validateBody(renameConversationSchema),
+  async (req: Request, res: Response) => {
+  const { title } = req.body as z.infer<typeof renameConversationSchema>;
 
   const { data: conversation, error } = await supabase
     .from('chat_conversations')
-    .update({ title: title.trim(), updated_at: new Date().toISOString() })
+    .update({ title, updated_at: new Date().toISOString() })
     .eq('id', req.params.id)
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .select('id, title, created_at, updated_at')
     .maybeSingle();
 
@@ -215,21 +187,16 @@ router.patch('/conversations/:id', async (req: AuthRequest, res: Response) => {
   }
 
   return res.json({ data: { conversation }, error: null });
-});
+  },
+);
 
 // DELETE /api/chat/conversations/:id
-router.delete('/conversations/:id', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const restaurant = await getRestaurant(userId);
-  if (!restaurant) return res.status(404).json({ data: null, error: 'Restaurant not found' });
-
+router.delete('/conversations/:id', async (req: Request, res: Response) => {
   const { error } = await supabase
     .from('chat_conversations')
     .delete()
     .eq('id', req.params.id)
-    .eq('restaurant_id', restaurant.id);
+    .eq('restaurant_id', req.restaurantId!);
 
   if (error) return res.status(404).json({ data: null, error: 'Conversation not found' });
 

@@ -1,9 +1,7 @@
 import type { ForecastItem } from '../../lib/advisorApi';
 import Icon from '../Icons';
-
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import InfoTooltip from '../InfoTooltip';
+import { formatCents } from '../../lib/format';
 
 const confidenceBadge: Record<ForecastItem['confidence'], string> = {
   high: 'bg-green-100 text-green-700',
@@ -28,7 +26,15 @@ export default function ForecastTable({ items }: Props) {
             <th className="px-4 py-3 text-right font-semibold">Projected (next 7d)</th>
             <th className="px-4 py-3 text-right font-semibold">Actual (last 7d)</th>
             <th className="px-4 py-3 text-right font-semibold">Change</th>
-            <th className="px-4 py-3 text-center font-semibold">Confidence</th>
+            <th className="px-4 py-3 text-center font-semibold">
+              <span className="inline-flex items-center gap-1">
+                Confidence
+                <InfoTooltip
+                  label="What does confidence mean?"
+                  text="How reliable this projection is, based on how much sales history the item has and how steady its recent demand has been. High = lots of consistent data; Low = sparse or volatile."
+                />
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 bg-white">

@@ -1,19 +1,27 @@
 import { Router, Request, Response } from 'express';
-import { JWTPayload } from 'jose';
+import { z } from 'zod';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { requireRestaurant } from '../middleware/requireRestaurant';
+import { validateBody } from '../middleware/validate';
 import { createAiRateLimiter } from '../middleware/rateLimit';
 import { generateMarketingCopy } from '../services/marketingService';
 
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
-
 const router = Router();
 // Authenticate first so the rate limiter can key on the user id, then cap how
-// often this Claude-powered endpoint can be called (cost protection — Sprint N).
+// often this Claude-powered endpoint can be called (cost protection — Sprint N),
+// then resolve the caller's restaurant.
 router.use(authMiddleware);
 router.use(createAiRateLimiter());
+router.use(requireRestaurant());
+
+// All three fields are required non-empty strings; trimming is applied so the
+// handler (and the LLM prompt) never sees surrounding whitespace.
+const generateSchema = z.object({
+  menuItemId: z.string().trim().min(1, 'menuItemId, tone, and platform are required'),
+  tone: z.string().trim().min(1, 'menuItemId, tone, and platform are required'),
+  platform: z.string().trim().min(1, 'menuItemId, tone, and platform are required'),
+});
 
 // ---------------------------------------------------------------------------
 // POST /api/marketing/generate
@@ -21,47 +29,18 @@ router.use(createAiRateLimiter());
 // Tenant scoping: restaurant resolved from req.user.sub — no client-supplied
 // restaurantId is accepted.
 // ---------------------------------------------------------------------------
-router.post('/generate', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { menuItemId, tone, platform } = req.body as {
-    menuItemId?: unknown;
-    tone?: unknown;
-    platform?: unknown;
-  };
-
-  // Validate: all three fields must be present non-empty strings.
-  if (
-    typeof menuItemId !== 'string' ||
-    menuItemId.trim() === '' ||
-    typeof tone !== 'string' ||
-    tone.trim() === '' ||
-    typeof platform !== 'string' ||
-    platform.trim() === ''
-  ) {
-    return res
-      .status(400)
-      .json({ data: null, error: 'menuItemId, tone, and platform are required' });
-  }
-
-  // Resolve the restaurant that belongs to this JWT user.
-  const { data: restaurant, error: rErr } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (rErr || !restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
+router.post(
+  '/generate',
+  validateBody(generateSchema),
+  async (req: Request, res: Response) => {
+  const { menuItemId, tone, platform } = req.body as z.infer<typeof generateSchema>;
 
   // Verify the requested menu item belongs to this tenant.
   const { data: item, error: iErr } = await supabase
     .from('menu_items')
     .select('id, name, category, price_cents, cost_cents')
     .eq('id', menuItemId)
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .single();
 
   if (iErr || !item) {
@@ -76,7 +55,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
   const { data: summaries, error: sErr } = await supabase
     .from('daily_summaries')
     .select('date, total_quantity, total_revenue_cents, total_orders')
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .eq('menu_item_id', menuItemId)
     .gte('date', sinceStr)
     .order('date', { ascending: true });
@@ -90,7 +69,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
   const { data: alerts, error: aErr } = await supabase
     .from('alerts')
     .select('type, severity, title, message')
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .eq('menu_item_id', menuItemId)
     .order('created_at', { ascending: false })
     .limit(3);
@@ -127,6 +106,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
   } catch {
     return res.status(502).json({ data: null, error: 'Marketing copy generation unavailable — try again shortly' });
   }
-});
+  },
+);
 
 export default router;

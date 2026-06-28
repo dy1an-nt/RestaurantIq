@@ -1,3 +1,5 @@
+import { formatDollars } from '../../lib/format';
+
 interface TopItemDataPoint {
   name: string;
   revenue_cents: number;
@@ -18,9 +20,6 @@ const Empty = () => (
     No item data available
   </div>
 );
-
-const formatDollars = (cents: number): string =>
-  `$${Math.round(cents / 100).toLocaleString('en-US')}`;
 
 const TopItemsChart = ({ data, loading }: Props) => {
   if (loading) return <Skeleton />;

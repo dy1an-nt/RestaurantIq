@@ -1,16 +1,14 @@
 import { Router, Request, Response } from 'express';
-import { JWTPayload } from 'jose';
+import { z } from 'zod';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
+import { requireRestaurant } from '../middleware/requireRestaurant';
+import { validateBody } from '../middleware/validate';
 import { analyzeMargins, MarginAnalysisError } from '../services/marginAnalysisService';
 import {
   analyzeChannelMargins,
   ChannelMarginError,
 } from '../services/channelMarginService';
-
-interface AuthRequest extends Request {
-  user?: JWTPayload;
-}
 
 // PostgREST returns embedded many-to-one relations as arrays even for single
 // FK relationships. Typing as an array and unwrapping with [0] is required.
@@ -31,26 +29,38 @@ interface OrderRow {
 
 const router = Router();
 router.use(authMiddleware);
+// Resolve the caller's restaurant once for every analytics route. The DoorDash
+// economics columns are pulled in the same query so /channel-margins doesn't
+// re-fetch the row it already resolved.
+router.use(
+  requireRestaurant('id, doordash_commission_bps, doordash_flat_fee_cents'),
+);
+
+// Body schema for the only write route in this router. `.strict()` rejects
+// unknown fields (preserving the route's prior hand-rolled behavior); the
+// refinement enforces "at least one field present".
+const deliveryEconomicsSchema = z
+  .object({
+    doordash_commission_bps: z.number().int().min(0).max(5000).optional(),
+    doordash_flat_fee_cents: z.number().int().min(0).max(2000).optional(),
+  })
+  .strict()
+  .refine(
+    (b) =>
+      b.doordash_commission_bps !== undefined ||
+      b.doordash_flat_fee_cents !== undefined,
+    {
+      message:
+        'At least one of doordash_commission_bps or doordash_flat_fee_cents is required',
+    },
+  );
 
 // ---------------------------------------------------------------------------
 // GET /api/analytics/dashboard
 // Returns revenueTrend, topItems, and hourlyDistribution for the last 30 days.
 // All aggregation is done in TypeScript after fetching from Supabase.
 // ---------------------------------------------------------------------------
-router.get('/dashboard', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { data: restaurant, error: rErr } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (rErr || !restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
-
+router.get('/dashboard', async (req: Request, res: Response) => {
   const since = new Date();
   since.setDate(since.getDate() - 30);
   const sinceStr = since.toISOString().split('T')[0];
@@ -59,7 +69,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
   const { data: summaries, error: sErr } = await supabase
     .from('daily_summaries')
     .select('menu_item_id, date, total_quantity, total_revenue_cents, total_orders, menu_items(name, category)')
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .gte('date', sinceStr)
     .order('date', { ascending: true });
 
@@ -71,7 +81,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
   const { data: orders, error: oErr } = await supabase
     .from('orders')
     .select('ordered_at, total_cents')
-    .eq('restaurant_id', restaurant.id)
+    .eq('restaurant_id', req.restaurantId!)
     .gte('ordered_at', since.toISOString());
 
   if (oErr) {
@@ -153,22 +163,9 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
 // Thin route: auth, restaurant lookup, delegate to marginAnalysisService, and
 // return the response. All math/classification lives in the service.
 // ---------------------------------------------------------------------------
-router.get('/margins', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { data: restaurant, error: rErr } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (rErr || !restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
-
+router.get('/margins', async (req: Request, res: Response) => {
   try {
-    const data = await analyzeMargins(restaurant.id);
+    const data = await analyzeMargins(req.restaurantId!);
     return res.json({ data, error: null });
   } catch (err) {
     const message =
@@ -186,19 +183,12 @@ router.get('/margins', async (req: AuthRequest, res: Response) => {
 // doordash_flat_fee_cents (added in migration 025). Those values are passed
 // directly to the service — the route does no margin math itself.
 // ---------------------------------------------------------------------------
-router.get('/channel-margins', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { data: restaurant, error: rErr } = await supabase
-    .from('restaurants')
-    .select('id, doordash_commission_bps, doordash_flat_fee_cents')
-    .eq('user_id', userId)
-    .single();
-
-  if (rErr || !restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
+router.get('/channel-margins', async (req: Request, res: Response) => {
+  const restaurant = req.restaurant as {
+    id: string;
+    doordash_commission_bps: number;
+    doordash_flat_fee_cents: number;
+  };
 
   try {
     const data = await analyzeChannelMargins(
@@ -224,69 +214,13 @@ router.get('/channel-margins', async (req: AuthRequest, res: Response) => {
 //
 // Returns the updated economics values (both fields, even if only one changed).
 // ---------------------------------------------------------------------------
-router.patch('/delivery-economics', async (req: AuthRequest, res: Response) => {
-  const userId = req.user?.sub;
-  if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
-
-  const { doordash_commission_bps, doordash_flat_fee_cents } = req.body ?? {};
-
-  // At least one field must be present.
-  if (doordash_commission_bps === undefined && doordash_flat_fee_cents === undefined) {
-    return res.status(400).json({
-      data: null,
-      error: 'At least one of doordash_commission_bps or doordash_flat_fee_cents is required',
-    });
-  }
-
-  // Validate each provided field.
-  if (doordash_commission_bps !== undefined) {
-    if (
-      !Number.isInteger(doordash_commission_bps) ||
-      doordash_commission_bps < 0 ||
-      doordash_commission_bps > 5000
-    ) {
-      return res.status(400).json({
-        data: null,
-        error: 'doordash_commission_bps must be an integer between 0 and 5000',
-      });
-    }
-  }
-
-  if (doordash_flat_fee_cents !== undefined) {
-    if (
-      !Number.isInteger(doordash_flat_fee_cents) ||
-      doordash_flat_fee_cents < 0 ||
-      doordash_flat_fee_cents > 2000
-    ) {
-      return res.status(400).json({
-        data: null,
-        error: 'doordash_flat_fee_cents must be an integer between 0 and 2000',
-      });
-    }
-  }
-
-  // Reject any unexpected fields in the body.
-  const allowedFields = new Set(['doordash_commission_bps', 'doordash_flat_fee_cents']);
-  const bodyKeys = Object.keys(req.body ?? {});
-  const unknownFields = bodyKeys.filter((k) => !allowedFields.has(k));
-  if (unknownFields.length > 0) {
-    return res.status(400).json({
-      data: null,
-      error: `Unknown field(s): ${unknownFields.join(', ')}`,
-    });
-  }
-
-  // Resolve the restaurant id from the authenticated user — never trust a
-  // client-supplied id (cross-tenant safety).
-  const { data: restaurant, error: rErr } = await supabase
-    .from('restaurants')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (rErr || !restaurant) {
-    return res.status(404).json({ data: null, error: 'Restaurant not found' });
-  }
+router.patch(
+  '/delivery-economics',
+  validateBody(deliveryEconomicsSchema),
+  async (req: Request, res: Response) => {
+  const { doordash_commission_bps, doordash_flat_fee_cents } = req.body as z.infer<
+    typeof deliveryEconomicsSchema
+  >;
 
   // Build the update payload from only the validated fields that were provided.
   const updates: Record<string, number> = {};
@@ -296,7 +230,7 @@ router.patch('/delivery-economics', async (req: AuthRequest, res: Response) => {
   const { data: updated, error: uErr } = await supabase
     .from('restaurants')
     .update(updates)
-    .eq('id', restaurant.id)
+    .eq('id', req.restaurantId!)
     .select('doordash_commission_bps, doordash_flat_fee_cents')
     .single();
 
@@ -306,6 +240,7 @@ router.patch('/delivery-economics', async (req: AuthRequest, res: Response) => {
   }
 
   return res.json({ data: updated, error: null });
-});
+  },
+);
 
 export default router;

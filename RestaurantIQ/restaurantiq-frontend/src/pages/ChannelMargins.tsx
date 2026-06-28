@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import EmptyState from '../components/EmptyState';
 import {
   BarChart,
   Bar,
@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { apiFetch } from '../lib/api';
+import { formatCents } from '../lib/format';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,7 +77,7 @@ interface ChannelMarginsData {
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
-const fmt = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
+const fmt = formatCents;
 const fmtK = (cents: number): string => {
   const d = cents / 100;
   if (d >= 1000) return `$${(d / 1000).toFixed(1)}k`;
@@ -326,7 +327,11 @@ const ChannelBarChart = ({ items }: { items: ChartItem[] }) => {
 
 type SortKey = 'gap' | 'in_house' | 'delivery' | 'name';
 
-const ChannelMargins = () => {
+/**
+ * `embedded` is set when this renders inside the consolidated Margins tab shell,
+ * which owns the page title — so the component suppresses its own <h1> header.
+ */
+const ChannelMargins = ({ embedded = false }: { embedded?: boolean }) => {
   const [data, setData] = useState<ChannelMarginsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -442,12 +447,14 @@ const ChannelMargins = () => {
   if (error) {
     return (
       <div className="max-w-5xl space-y-6">
-        <header>
-          <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Channel Margins</h1>
-          <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
-            In-house vs DoorDash — true margin after commission
-          </p>
-        </header>
+        {!embedded && (
+          <header>
+            <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Channel Margins</h1>
+            <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
+              In-house vs DoorDash — true margin after commission
+            </p>
+          </header>
+        )}
         <div className="rounded-sm bg-neg-bg border border-neg/30 px-4 py-3 text-sm text-neg">
           {error}
         </div>
@@ -463,28 +470,23 @@ const ChannelMargins = () => {
   if (isEmpty) {
     return (
       <div className="max-w-5xl space-y-6">
-        <header>
-          <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Channel Margins</h1>
-          <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
-            In-house vs DoorDash — true margin after commission
-          </p>
-        </header>
+        {!embedded && (
+          <header>
+            <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Channel Margins</h1>
+            <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
+              In-house vs DoorDash — true margin after commission
+            </p>
+          </header>
+        )}
         {data && (
           <SettingsPanel settings={data.settings} onSaved={handleSettingsSaved} />
         )}
-        <div className="bg-surface border border-line rounded p-12 text-center">
-          <p className="text-xl font-extrabold text-ink">No channel data yet</p>
-          <p className="text-sm text-ink-3 mt-2 max-w-md mx-auto">
-            Sync your Square and DoorDash integrations and add item costs to see
-            cross-channel margin analysis.
-          </p>
-          <Link
-            to="/integrations"
-            className="inline-flex items-center mt-6 px-4 h-[46px] bg-navy-700 text-white text-sm font-bold rounded-[9px] hover:bg-navy-800 transition-colors"
-          >
-            Go to Integrations
-          </Link>
-        </div>
+        <EmptyState
+          icon="channels"
+          title="No channel data yet"
+          description="Sync your Square and DoorDash integrations and add item costs to see cross-channel margin analysis."
+          action={{ label: 'Go to Integrations', to: '/integrations' }}
+        />
       </div>
     );
   }
@@ -514,12 +516,14 @@ const ChannelMargins = () => {
   return (
     <div className="max-w-5xl space-y-8">
       {/* Page header */}
-      <header>
-        <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Channel Margins</h1>
-        <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
-          In-house vs DoorDash — true margin after commission · Last 30 days
-        </p>
-      </header>
+      {!embedded && (
+        <header>
+          <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Channel Margins</h1>
+          <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
+            In-house vs DoorDash — true margin after commission · Last 30 days
+          </p>
+        </header>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

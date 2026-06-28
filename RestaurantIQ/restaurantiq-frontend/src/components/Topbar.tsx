@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { useUnreadAlerts } from '../lib/useUnreadAlerts';
@@ -9,10 +8,12 @@ const ROUTE_META: Record<string, { crumb: string; title: string }> = {
   '/': { crumb: 'Dashboard', title: 'Menu Performance' },
   '/analytics': { crumb: 'Analytics', title: 'Analytics' },
   '/margins': { crumb: 'Margins', title: 'Margins' },
-  '/insights': { crumb: 'AI Insights', title: 'AI Insights' },
+  '/ai': { crumb: 'AI Assistant', title: 'AI Assistant' },
+  '/advisor': { crumb: 'Forecast', title: 'Demand Forecast' },
   '/alerts': { crumb: 'Alerts', title: 'Alerts' },
   '/marketing': { crumb: 'Marketing', title: 'Marketing' },
   '/integrations': { crumb: 'Integrations', title: 'Integrations' },
+  '/settings': { crumb: 'Settings', title: 'Settings' },
   '/sync-health': { crumb: 'Sync Health', title: 'Sync Health' },
 };
 
@@ -28,7 +29,6 @@ const Topbar = () => {
   const location = useLocation();
   const { user } = useAuth();
   const unread = useUnreadAlerts();
-  const [search, setSearch] = useState('');
 
   const meta = ROUTE_META[location.pathname] ?? { crumb: 'Dashboard', title: '' };
   const isDashboard = location.pathname === '/';
@@ -45,29 +45,19 @@ const Topbar = () => {
 
       <div className="flex-1" />
 
-      {/* Search (menu items) */}
-      <div className="hidden md:flex items-center gap-[9px] h-[38px] w-[248px] px-[13px] border border-line rounded-[9px] text-ink-3 bg-surface focus-within:border-navy-500 focus-within:shadow-[0_0_0_3px_#f1f5fa]">
-        <Icon name="search" size={17} />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search menu items…"
-          className="border-0 outline-none bg-transparent w-full text-[13.5px] text-ink placeholder:text-ink-3"
-        />
-      </div>
-
-      {/* Date range (fixed 30-day window) */}
+      {/* Analysis window — every surface uses a fixed trailing-30-day window.
+          Shown as a static badge (not a control) so it doesn't imply a date
+          picker the product doesn't have. */}
       <div className="hidden sm:flex items-center gap-2 h-[38px] px-[13px] border border-line rounded-[9px] text-[13.5px] font-semibold text-ink-2 bg-surface whitespace-nowrap">
         <Icon name="calendar" size={16} className="text-ink-3" />
         <span>Last 30 days</span>
-        <Icon name="chevron" size={15} className="text-ink-3" />
       </div>
 
       {/* Primary action */}
       {isDashboard ? (
         <Link
           to="/integrations"
-          className="flex items-center gap-2 h-[38px] px-4 rounded-[9px] bg-navy-700 text-white text-[13.5px] font-bold hover:bg-navy-800 transition-colors whitespace-nowrap"
+          className="flex items-center gap-2 h-[38px] px-4 rounded-[9px] bg-navy-700 text-white text-[13.5px] font-bold hover:bg-navy-800 transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2"
         >
           <Icon name="sync" size={17} />
           Run sync
@@ -75,8 +65,8 @@ const Topbar = () => {
       ) : (
         <Link
           to="/alerts"
-          className="relative w-[38px] h-[38px] rounded-[9px] border border-line bg-surface flex items-center justify-center text-ink-2 hover:bg-canvas transition-colors"
-          aria-label="Alerts"
+          className="relative w-[38px] h-[38px] rounded-[9px] border border-line bg-surface flex items-center justify-center text-ink-2 hover:bg-canvas transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+          aria-label={unread > 0 ? `Alerts, ${unread} unread` : 'Alerts'}
         >
           <Icon name="bell" size={18} />
           {unread > 0 && (
@@ -85,10 +75,14 @@ const Topbar = () => {
         </Link>
       )}
 
-      {/* Avatar */}
-      <div className="w-[38px] h-[38px] rounded-full bg-navy-100 text-navy-700 text-[13px] font-extrabold flex items-center justify-center flex-shrink-0">
+      {/* Avatar → Settings */}
+      <Link
+        to="/settings"
+        aria-label="Settings and account"
+        className="w-[38px] h-[38px] rounded-full bg-navy-100 text-navy-700 text-[13px] font-extrabold flex items-center justify-center flex-shrink-0 hover:bg-navy-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2"
+      >
         {avatarInitials(user?.email)}
-      </div>
+      </Link>
     </header>
   );
 };

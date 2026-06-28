@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiFetch } from '../lib/api';
+import { formatCents } from '../lib/format';
+import EmptyState from '../components/EmptyState';
 
 interface MarginItem {
   id: string;
@@ -42,13 +43,13 @@ interface MarginsData {
   missingCostItems: MissingCostItem[];
 }
 
-const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const fmt = formatCents;
 const fmtPct = (pct: number) => `${pct.toFixed(1)}%`;
 
 const marginColorClass = (pct: number): string => {
   if (pct < 0) return 'text-red-600';
   if (pct < 25) return 'text-yellow-600';
-  if (pct < 50) return 'text-gray-900';
+  if (pct < 50) return 'text-ink';
   return 'text-green-600';
 };
 
@@ -75,43 +76,43 @@ const accentBadgeClass: Record<CategorySectionProps['accent'], string> = {
 };
 
 const CategorySection = ({ title, description, items, accent, emptyText }: CategorySectionProps) => (
-  <div className="bg-white rounded-xl shadow overflow-hidden">
+  <div className="bg-surface border border-line rounded overflow-hidden">
     <div className={`px-6 py-4 border-l-4 ${accentBorderClass[accent]} flex items-start justify-between`}>
       <div>
-        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-        <p className="text-sm text-gray-500 mt-0.5">{description}</p>
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        <p className="text-sm text-ink-3 mt-0.5">{description}</p>
       </div>
       <span className={`text-xs font-medium px-2 py-1 rounded-full ${accentBadgeClass[accent]}`}>
         {items.length} items
       </span>
     </div>
     {items.length === 0 ? (
-      <p className="px-6 py-6 text-sm text-gray-400">{emptyText}</p>
+      <p className="px-6 py-6 text-sm text-ink-3">{emptyText}</p>
     ) : (
       <table className="w-full text-left">
         <thead>
-          <tr className="bg-gray-50">
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Cost</th>
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Margin</th>
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">30d Orders</th>
-            <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">30d Profit</th>
+          <tr className="bg-canvas">
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Item</th>
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Category</th>
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Price</th>
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Cost</th>
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Margin</th>
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">30d Orders</th>
+            <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">30d Profit</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
-              <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.name}</td>
-              <td className="px-4 py-3 text-sm text-gray-500">{item.category}</td>
-              <td className="px-4 py-3 text-sm text-gray-700">{fmt(item.price_cents)}</td>
-              <td className="px-4 py-3 text-sm text-gray-700">{fmt(item.cost_cents)}</td>
+            <tr key={item.id} className="border-t border-line hover:bg-canvas">
+              <td className="px-4 py-3 text-sm font-medium text-ink">{item.name}</td>
+              <td className="px-4 py-3 text-sm text-ink-3">{item.category}</td>
+              <td className="px-4 py-3 text-sm text-ink-2">{fmt(item.price_cents)}</td>
+              <td className="px-4 py-3 text-sm text-ink-2">{fmt(item.cost_cents)}</td>
               <td className={`px-4 py-3 text-sm font-semibold ${marginColorClass(item.margin_percent)}`}>
                 {fmtPct(item.margin_percent)}
               </td>
-              <td className="px-4 py-3 text-sm text-gray-700">{item.orders_30d}</td>
-              <td className="px-4 py-3 text-sm text-gray-700">{fmt(item.profit_30d_cents)}</td>
+              <td className="px-4 py-3 text-sm text-ink-2">{item.orders_30d}</td>
+              <td className="px-4 py-3 text-sm text-ink-2">{fmt(item.profit_30d_cents)}</td>
             </tr>
           ))}
         </tbody>
@@ -120,7 +121,12 @@ const CategorySection = ({ title, description, items, accent, emptyText }: Categ
   </div>
 );
 
-const MarginAnalysis = () => {
+/**
+ * `embedded` is set when this renders inside the consolidated Margins tab shell,
+ * which owns the page title — so the component suppresses its own <h1> header to
+ * avoid a duplicate title. Standalone (legacy /margins direct) it shows its own.
+ */
+const MarginAnalysis = ({ embedded = false }: { embedded?: boolean }) => {
   const [data, setData] = useState<MarginsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -208,12 +214,14 @@ const MarginAnalysis = () => {
 
   return (
     <div className="max-w-5xl space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">Margin Analysis</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Profitability by item — margins, repricing opportunities, and top contributors
-        </p>
-      </header>
+      {!embedded && (
+        <header>
+          <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Margin Analysis</h1>
+          <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
+            Profitability by item — margins, repricing opportunities, and top contributors
+          </p>
+        </header>
+      )}
 
       {error && (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
@@ -222,41 +230,34 @@ const MarginAnalysis = () => {
       )}
 
       {!error && isEmpty && (
-        <div className="bg-white rounded-xl shadow p-12 text-center">
-          <p className="text-xl font-semibold text-gray-900">No margin data yet</p>
-          <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
-            Add cost data to your menu items to see profitability analysis. Costs are entered
-            from the Dashboard menu table.
-          </p>
-          <Link
-            to="/"
-            className="inline-flex items-center mt-6 px-4 py-2 bg-navy-700 text-white text-sm font-medium rounded-md hover:bg-navy-800"
-          >
-            Add cost data to your menu items
-          </Link>
-        </div>
+        <EmptyState
+          icon="margins"
+          title="No margin data yet"
+          description="Add cost data to your menu items to see profitability analysis. Costs are entered from the Dashboard menu table."
+          action={{ label: 'Add cost data', to: '/' }}
+        />
       )}
 
       {!error && data && !isEmpty && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl shadow p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Average Margin</p>
+            <div className="bg-surface border border-line rounded p-5">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">Average Margin</p>
               <p className={`text-2xl font-bold mt-1 ${averageMarginColor}`}>
                 {fmtPct(data.summary.averageMarginPercent)}
               </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">30-Day Profit</p>
-              <p className="text-2xl font-bold mt-1 text-gray-900">
+            <div className="bg-surface border border-line rounded p-5">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">30-Day Profit</p>
+              <p className="text-2xl font-bold mt-1 text-ink">
                 {fmt(data.summary.totalProfitCents)}
               </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Top Margin Item</p>
-              <p className="text-lg font-bold mt-1 text-gray-900 truncate">
+            <div className="bg-surface border border-line rounded p-5">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">Top Margin Item</p>
+              <p className="text-lg font-bold mt-1 text-ink truncate">
                 {data.summary.bestItem?.name ?? '—'}
               </p>
               {data.summary.bestItem && (
@@ -266,9 +267,9 @@ const MarginAnalysis = () => {
               )}
             </div>
 
-            <div className="bg-white rounded-xl shadow p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Worst Margin Item</p>
-              <p className="text-lg font-bold mt-1 text-gray-900 truncate">
+            <div className="bg-surface border border-line rounded p-5">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">Worst Margin Item</p>
+              <p className="text-lg font-bold mt-1 text-ink truncate">
                 {data.summary.worstItem?.name ?? '—'}
               </p>
               {data.summary.worstItem && (
@@ -278,25 +279,25 @@ const MarginAnalysis = () => {
               )}
             </div>
 
-            <div className="bg-white rounded-xl shadow p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Missing Costs</p>
+            <div className="bg-surface border border-line rounded p-5">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">Missing Costs</p>
               <p
                 className={`text-2xl font-bold mt-1 ${
-                  data.summary.missingCosts > 0 ? 'text-yellow-600' : 'text-gray-900'
+                  data.summary.missingCosts > 0 ? 'text-yellow-600' : 'text-ink'
                 }`}
               >
                 {data.summary.missingCosts}
               </p>
-              <p className="text-xs text-gray-400 mt-1">items without cost data</p>
+              <p className="text-xs text-ink-3 mt-1">items without cost data</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-surface border border-line rounded p-6">
+            <h2 className="text-lg font-semibold text-ink mb-4">
               Top Items by Profit Contribution (30d)
             </h2>
             {chartData.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">No profit data available</p>
+              <p className="text-sm text-ink-3 text-center py-8">No profit data available</p>
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart
@@ -355,11 +356,11 @@ const MarginAnalysis = () => {
           />
 
           {data.missingCostItems.length > 0 && (
-            <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="bg-surface border border-line rounded overflow-hidden">
               <div className="px-6 py-4 border-l-4 border-gray-300 flex items-start justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Missing Cost Items</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">
+                  <h2 className="text-base font-semibold text-ink">Missing Cost Items</h2>
+                  <p className="text-sm text-ink-3 mt-0.5">
                     Add item costs to unlock profitability analytics.
                   </p>
                 </div>
@@ -369,17 +370,17 @@ const MarginAnalysis = () => {
               </div>
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  <tr className="bg-canvas">
+                    <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Item</th>
+                    <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Price</th>
+                    <th className="px-4 py-2 text-xs font-medium text-ink-3 uppercase tracking-wide">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.missingCostItems.map((item) => (
-                    <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{fmt(item.price_cents)}</td>
+                    <tr key={item.id} className="border-t border-line hover:bg-canvas">
+                      <td className="px-4 py-3 text-sm font-medium text-ink">{item.name}</td>
+                      <td className="px-4 py-3 text-sm text-ink-2">{fmt(item.price_cents)}</td>
                       <td className="px-4 py-3">
                         <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-600">
                           Cost Missing

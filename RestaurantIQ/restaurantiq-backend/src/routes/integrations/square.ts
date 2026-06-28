@@ -1,12 +1,27 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { supabase } from '../../db';
 import { authMiddleware } from '../../middleware/auth';
+import { validateBody } from '../../middleware/validate';
 import { isMockMode } from '../../services/square/squareClient';
 import { encryptToken } from '../../lib/tokenCrypto';
 import { syncIntegration } from '../../services/syncScheduler';
 
 const SQUARE_CREDS_SELECT =
   'id, pos_connected, square_location_id, square_access_token, square_refresh_token, square_token_expires_at, delivery_connected, doordash_store_id, doordash_access_token, doordash_refresh_token, doordash_token_expires_at';
+
+// Connect persists the Square location + (encrypted) tokens; the optional
+// refresh_token/expires_in enable the auto-refresh flow. expires_in is coerced
+// so a numeric string from the client is accepted as before.
+const connectSchema = z.object({
+  restaurant_id: z.string().min(1),
+  location_id: z.string().min(1),
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
+  expires_in: z.coerce.number().int().positive().optional(),
+});
+
+const syncSchema = z.object({ restaurant_id: z.string().min(1) });
 
 const router = Router();
 
@@ -37,18 +52,12 @@ router.get('/status', (_req: Request, res: Response) => {
  * expires_in enable the automatic refresh flow (Sprint K) — sandbox PAT-style
  * tokens won't have them, in which case the integration behaves as before.
  */
-router.post('/connect', async (req: Request, res: Response) => {
+router.post('/connect', validateBody(connectSchema), async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
-  const { restaurant_id, location_id, access_token, refresh_token, expires_in } = req.body ?? {};
-
-  if (!restaurant_id || !location_id || !access_token) {
-    return res.status(400).json({
-      data: null,
-      error: 'restaurant_id, location_id, and access_token are required',
-    });
-  }
+  const { restaurant_id, location_id, access_token, refresh_token, expires_in } =
+    req.body as z.infer<typeof connectSchema>;
 
   const updates: Record<string, unknown> = {
     square_location_id: location_id,
@@ -91,14 +100,11 @@ router.post('/connect', async (req: Request, res: Response) => {
  * duplicate an in-flight scheduled run (returns 409 instead). In USE_MOCK mode
  * the ingest is a no-op that resolves immediately.
  */
-router.post('/sync', async (req: Request, res: Response) => {
+router.post('/sync', validateBody(syncSchema), async (req: Request, res: Response) => {
   const userId = (req as any).user?.sub;
   if (!userId) return res.status(401).json({ data: null, error: 'Unauthorized' });
 
-  const { restaurant_id } = req.body ?? {};
-  if (!restaurant_id) {
-    return res.status(400).json({ data: null, error: 'restaurant_id is required' });
-  }
+  const { restaurant_id } = req.body as z.infer<typeof syncSchema>;
 
   const { data: owned, error: ownerErr } = await supabase
     .from('restaurants')

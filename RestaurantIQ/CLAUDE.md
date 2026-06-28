@@ -1,11 +1,11 @@
 # RestaurantIQ
 
-Restaurant analytics and marketing SaaS. Syncs with POS systems (Toast) and delivery apps (DoorDash), surfaces menu analytics, and generates AI-powered marketing copy.
+Restaurant analytics and marketing SaaS. Syncs with POS systems (Square) and delivery apps (DoorDash), surfaces menu analytics, and generates AI-powered marketing copy.
 
 ## Project Overview
 
 **MVP Scope:** Menu analytics + marketing copy only.
-- Toast POS + DoorDash API integration for unified order data
+- Square POS + DoorDash API integration for unified order data
 - Analytics dashboard: top/bottom items by revenue, margin, time-of-day heatmaps, week-over-week trends
 - AI insights via Claude API: plain English recommendations on what to promote, cut, or reprice
 - Marketing copy generation: social captions, promo ideas based on item performance
@@ -26,7 +26,7 @@ Restaurant analytics and marketing SaaS. Syncs with POS systems (Toast) and deli
 ```sql
 restaurants
   id, name, location, pos_connected, delivery_connected,
-  toast_guid, doordash_store_id, created_at
+  square_location_id, doordash_store_id, created_at
 
 menu_items
   id, restaurant_id, name, category, price_cents, cost_cents,
