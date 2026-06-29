@@ -9,6 +9,14 @@ export interface SummaryRow {
   menu_items: { name: string; category: string } | null;
 }
 
+// Where an owner should go to investigate an insight. Maps 1:1 to a real route
+// in the frontend (see InsightsPanel LINK_CONFIG) — keep these in sync.
+export type InsightLink = 'analytics' | 'forecast' | 'margins' | 'menu' | 'alerts';
+
+// Priority drives both ordering and the chip colour. The AI assigns it directly
+// (Sprint T) instead of the frontend guessing it from keywords.
+export type InsightPriority = 'high' | 'medium' | 'low';
+
 export interface Insight {
   category:
     | 'staffing'
@@ -18,25 +26,41 @@ export interface Insight {
     | 'menu_performance'
     | 'operational'
     | 'customer_behavior';
+  /** How urgently the owner should act. high = today, low = monitor. */
+  priority: InsightPriority;
+  /** Short headline, under 10 words. */
   title: string;
-  recommendation: string;
+  /** One sentence: what is happening and why it matters. */
+  explanation: string;
+  /** The specific numbers cited as evidence. */
   metric: string;
+  /** Expected business impact in concrete terms (dollars/week, % of revenue). */
+  impact: string;
+  /** The single recommended next action. */
+  action: string;
+  /** Which product area to open to investigate this insight. */
+  link: InsightLink;
 }
 
 export interface InsightsResult {
   insights: Insight[];
 }
 
+// Ordering weight for sorting; lower sorts first.
+const PRIORITY_RANK: Record<InsightPriority, number> = { high: 0, medium: 1, low: 2 };
+
 const INSIGHTS_TOOL: Anthropic.Tool = {
   name: 'report_insights',
-  description: 'Report 5–8 prioritized operational insights for a restaurant based on sales data.',
+  description:
+    'Report 3–6 prioritized, actionable insights for a restaurant owner based on sales data. ' +
+    'Fewer, higher-impact insights are better than many generic ones.',
   input_schema: {
     type: 'object' as const,
     properties: {
       insights: {
         type: 'array',
-        minItems: 5,
-        maxItems: 8,
+        minItems: 3,
+        maxItems: 6,
         items: {
           type: 'object',
           properties: {
@@ -52,20 +76,43 @@ const INSIGHTS_TOOL: Anthropic.Tool = {
                 'customer_behavior',
               ],
             },
+            priority: {
+              type: 'string',
+              enum: ['high', 'medium', 'low'],
+              description:
+                'high = act today (large revenue at stake / urgent); medium = act this week; ' +
+                'low = monitor, no action needed yet. Reserve "high" for at most 1–2 insights.',
+            },
             title: {
               type: 'string',
-              description: 'Short headline, under 10 words',
+              description: 'Short headline, under 10 words. No numbers — that goes in metric.',
             },
-            recommendation: {
+            explanation: {
               type: 'string',
-              description: '1–2 sentences of plain-English advice',
+              description: 'ONE plain-English sentence: what is happening and why it matters.',
             },
             metric: {
               type: 'string',
-              description: 'The specific number or trend cited as evidence',
+              description: 'The specific number(s) or trend cited as evidence, e.g. "$1,440 → $1,108 (-23%)".',
+            },
+            impact: {
+              type: 'string',
+              description:
+                'Expected business impact in concrete terms, e.g. "~$2,000/week at risk" or "+8% attach rate".',
+            },
+            action: {
+              type: 'string',
+              description: 'ONE recommended next action, phrased as an imperative the owner can do.',
+            },
+            link: {
+              type: 'string',
+              enum: ['analytics', 'forecast', 'margins', 'menu', 'alerts'],
+              description:
+                'Where to investigate: "analytics" for trends/peak-hours, "margins" for pricing/cost, ' +
+                '"forecast" for demand/staffing, "menu" for item performance, "alerts" for anomalies.',
             },
           },
-          required: ['category', 'title', 'recommendation', 'metric'],
+          required: ['category', 'priority', 'title', 'explanation', 'metric', 'impact', 'action', 'link'],
         },
       },
     },
@@ -85,38 +132,48 @@ You will receive a JSON array of daily sales summaries, each containing:
 - total_revenue_cents: total revenue in cents — divide by 100 to get dollars
 - total_orders: number of orders that included this item
 
-Your task is to identify 5–8 high-value insights spanning as many distinct categories as possible. \
-Aim for at least 4 different categories from this set: \
-staffing, peak_hours, slow_days, sales_anomaly, menu_performance, operational, customer_behavior.
+Your task is to identify 3–6 of the MOST VALUABLE insights. Fewer, sharper insights beat a long list \
+of equally-weighted observations — a busy owner should be able to read every one between services. \
+Prefer distinct categories, but never pad the list to hit a count.
+
+Each insight has SIX fields the owner reads in order. Keep each one short:
+- title: the headline, under 10 words, no numbers.
+- explanation: ONE sentence — what is happening and why it matters.
+- metric: the supporting number(s), e.g. "$1,440 → $1,108 (-23%) over 14 days".
+- impact: the expected business impact in concrete terms, e.g. "~$2,000/week at risk".
+- action: ONE next step the owner can take, phrased as an imperative.
+- priority + link: see below.
 
 Guidelines for high-quality insights:
 
-1. Be specific — cite the actual numbers. Do not say "sales are down"; instead say \
-"BBQ Ribs revenue fell 23% over the last 14 days ($1,440 → $1,108)."
+1. Be specific — cite actual numbers in the metric field. Never say "sales are down"; say \
+"BBQ Ribs revenue fell 23% over 14 days ($1,440 → $1,108)."
 
-2. Be actionable — every insight must tell the owner what to DO, not just what happened. \
-Bad: "Truffle Fries are popular." Good: "Truffle Fries are your highest-margin appetizer — \
-feature them in your social posts this week to drive attach-rate."
+2. Be actionable — the action field must tell the owner what to DO. \
+Bad: "Truffle Fries are popular." Good: "Feature Truffle Fries in this week's social posts."
 
-3. Revenue figures — all monetary data is in cents. When citing dollar amounts in your recommendations, \
-divide by 100 and format with a dollar sign (e.g., 280000 cents → $2,800).
+3. Revenue figures — all monetary data is in cents. Divide by 100 and format with a dollar sign \
+(280000 cents → $2,800) wherever you cite money.
 
-4. Prioritize by business impact — a $2,000/week revenue opportunity outranks a $50 anomaly. \
-Rank your insights accordingly so the most important one is first.
+4. Prioritize by business impact — assign priority "high" only to the 1–2 insights with the largest \
+dollars at stake or true urgency; "medium" for act-this-week items; "low" for monitor-only. \
+Order the array most-important first.
 
-5. Trend analysis — compare the most recent 14 days against the prior 14 days where possible. \
-Compute the percentage change and include it in the metric field.
+5. Trend analysis — compare the most recent 14 days against the prior 14 days where possible, and put \
+the percentage change in the metric field.
 
-6. Menu performance — identify top performers worth promoting and underperformers worth \
-cutting, repricing, or repositioning. Flag items with high margin (price - cost) that are underselling.
+6. Menu performance — identify top performers worth promoting and underperformers worth cutting, \
+repricing, or repositioning. Flag high-margin items that are underselling.
 
-7. Volume patterns — detect days of the week or date ranges with unusually high or low total order counts. \
-Use these to suggest staffing adjustments or promotional timing.
+7. Volume patterns — detect days or date ranges with unusually high or low order counts and use them \
+to suggest staffing or promotional timing.
 
-8. Anomalies — flag any item whose sales fell or rose more than 20% week-over-week. Hypothesize a cause \
-(seasonal shift, placement change, out-of-stock) if the pattern is clear.
+8. Anomalies — flag any item whose sales moved more than 20% week-over-week and hypothesize a cause \
+(seasonal shift, placement change, out-of-stock) when the pattern is clear.
 
-9. Conciseness — keep recommendations to 1–2 sentences each. Managers read these between services on a phone.
+9. Link — choose where the owner should investigate: "analytics" for trends and peak hours, "margins" \
+for pricing and cost questions, "forecast" for demand and staffing, "menu" for item-level performance, \
+"alerts" for anomalies that need watching.
 
 10. Data fidelity — do not invent data. Only reference numbers that appear in the data you were given.
 
@@ -126,10 +183,14 @@ const FALLBACK: InsightsResult = {
   insights: [
     {
       category: 'menu_performance',
+      priority: 'low',
       title: 'Not enough data yet',
-      recommendation:
-        'Keep recording sales for a few more days — insights appear once at least 3 days of data are available.',
-      metric: 'fewer than 3 days of daily summaries found',
+      explanation:
+        'There are fewer than three days of sales on record, so there is not yet enough signal to analyze.',
+      metric: 'Fewer than 3 days of daily summaries found.',
+      impact: 'Insights unlock once a few days of sales are recorded.',
+      action: 'Keep your POS synced for a few more days, then refresh.',
+      link: 'menu',
     },
   ],
 };
@@ -162,7 +223,9 @@ export async function generateInsights(summaries: SummaryRow[]): Promise<Insight
     const response = await client.messages.create(
       {
         model: process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
+        // Six insights × six short fields; 1536 leaves headroom over the old
+        // 1024 cap so the tool call is never truncated mid-array.
+        max_tokens: 1536,
         system: [
           {
             type: 'text',
@@ -182,7 +245,16 @@ export async function generateInsights(summaries: SummaryRow[]): Promise<Insight
     );
     if (!toolBlock) throw new Error('No tool_use block in response');
 
-    return toolBlock.input as InsightsResult;
+    const result = toolBlock.input as InsightsResult;
+
+    // Defensive re-sort by priority: the prompt asks for most-important-first,
+    // but we guarantee the ordering here so the frontend can render top-down
+    // without re-deriving it. Stable sort preserves the model's intra-tier order.
+    const insights = [...(result.insights ?? [])].sort(
+      (a, b) => (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3),
+    );
+
+    return { insights };
   } catch (err) {
     if (err instanceof APIError) {
       console.error(`[insights] Anthropic API error ${err.status}:`, err.message);

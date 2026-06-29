@@ -1,8 +1,14 @@
 import MenuItemsTable from '../components/MenuItemsTable';
 import DashboardKpis from '../components/DashboardKpis';
+import DashboardPriority from '../components/DashboardPriority';
 import LastSyncedIndicator from '../components/LastSyncedIndicator';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
 
+// Dashboard sections are ordered to answer an owner's three questions in turn
+// (Sprint T5): what needs attention today (priority strip) → how am I doing
+// (KPIs) → the detail behind it (menu table). The revenue methodology note was
+// removed as a duplicate — the same explanation now lives only in the 30-Day
+// Revenue KPI tooltip, reducing clutter.
 const Dashboard = () => {
   const { restaurant } = useRestaurant();
   const subParts = [restaurant?.name ?? 'Your restaurant', restaurant?.location, 'Last 30 days'].filter(Boolean);
@@ -16,16 +22,9 @@ const Dashboard = () => {
         </div>
         <LastSyncedIndicator />
       </div>
+      <DashboardPriority />
       <DashboardKpis />
       <MenuItemsTable />
-      {/* Revenue methodology note — what the headline number does and doesn't
-          include, so an owner comparing against their POS understands any gap
-          instead of distrusting the dashboard (review §3 / R5). */}
-      <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
-        Revenue reflects menu&nbsp;item sales (quantity × item price) over the last 30 days.
-        It may differ from your POS gross total, which can also include tax, tips, discounts,
-        and service fees.
-      </p>
     </div>
   );
 };

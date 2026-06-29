@@ -16,15 +16,35 @@ type InsightCategory =
   | 'operational'
   | 'customer_behavior';
 
+type Priority = 'high' | 'medium' | 'low';
+type InsightLink = 'analytics' | 'forecast' | 'margins' | 'menu' | 'alerts';
+
 interface Insight {
   category: InsightCategory;
+  priority: Priority;
   title: string;
-  recommendation: string;
+  explanation: string;
   metric: string;
+  impact: string;
+  action: string;
+  link: InsightLink;
+}
+
+interface InsightsMeta {
+  generatedAt: string;
+  periodDays: number;
+  rangeStart: string;
+  rangeEnd: string;
+  daysWithData: number;
+  itemsAnalyzed: number;
+  ordersAnalyzed: number;
+  confidence: 'high' | 'medium' | 'low';
+  source: string;
 }
 
 interface InsightsResult {
   insights: Insight[];
+  meta?: InsightsMeta;
 }
 
 type FetchState =
@@ -32,57 +52,65 @@ type FetchState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'empty' }
-  | { status: 'data'; insights: Insight[] };
+  | { status: 'data'; insights: Insight[]; meta?: InsightsMeta };
 
-// ─── Priority ─────────────────────────────────────────────────────────────────
+// ─── Priority config ──────────────────────────────────────────────────────────
 
-type Priority = 'critical' | 'opportunity' | 'positive' | 'info';
+const PRIORITY_RANK: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
 
-function derivePriority(insight: Insight): Priority {
-  const text = `${insight.title} ${insight.recommendation} ${insight.metric}`.toLowerCase();
-  if (/fell|dropped|failing|underperform|missing|inconsist|volatile|not capturing|below average|slow day|out.of.stock|40%.*below|only.*day/.test(text)) {
-    return 'critical';
-  }
-  if (/spike|jump|best day|highest|strongest|top performer|outperform|up \d+%|increased|record/.test(text)) {
-    return 'positive';
-  }
-  if (/promot|boost|feature|upsell|bundle|opportunit|extend|train staff|increase.*cover|add.*portion/.test(text)) {
-    return 'opportunity';
-  }
-  return 'info';
-}
-
-const PRIORITY_CONFIG: Record<Priority, { label: string; chip: string; cardBg: string }> = {
-  critical:    { label: 'Needs Attention', chip: 'bg-red-50 text-red-600 border border-red-200',        cardBg: 'bg-red-50/40' },
-  opportunity: { label: 'Opportunity',     chip: 'bg-warn-bg text-warn border border-warn/30',          cardBg: 'bg-white' },
-  positive:    { label: 'Positive Trend',  chip: 'bg-green-50 text-green-700 border border-green-200',  cardBg: 'bg-green-50/30' },
-  info:        { label: 'Informational',   chip: 'bg-navy-50 text-navy-700 border border-navy-100',     cardBg: 'bg-white' },
+const PRIORITY_CONFIG: Record<Priority, { label: string; chip: string; border: string; cardBg: string }> = {
+  high:   { label: 'High priority',   chip: 'bg-red-50 text-red-600 border border-red-200',       border: 'border-red-400',    cardBg: 'bg-red-50/40' },
+  medium: { label: 'Medium priority', chip: 'bg-warn-bg text-warn border border-warn/30',          border: 'border-amber-400',  cardBg: 'bg-white' },
+  low:    { label: 'Low priority',    chip: 'bg-navy-50 text-navy-700 border border-navy-100',     border: 'border-navy-200',   cardBg: 'bg-white' },
 };
+
+// ─── Link config ──────────────────────────────────────────────────────────────
+// Each insight points at exactly one real route so the owner can investigate it
+// in one click (Sprint T3). Keep the enum in sync with the backend InsightLink.
+
+const LINK_CONFIG: Record<InsightLink, { label: string; to: string }> = {
+  analytics: { label: 'See Analytics',         to: '/analytics' },
+  forecast:  { label: 'Open Forecast',         to: '/advisor' },
+  margins:   { label: 'Review Margins',        to: '/margins' },
+  menu:      { label: 'View Menu Performance', to: '/' },
+  alerts:    { label: 'View Alerts',           to: '/alerts' },
+};
+
+function getLinkConfig(link: string): { label: string; to: string } {
+  return LINK_CONFIG[link as InsightLink] ?? LINK_CONFIG.menu;
+}
 
 // ─── Category config ──────────────────────────────────────────────────────────
 
 interface CategoryConfig {
   label: string;
-  border: string;
   icon: React.ReactNode;
 }
 
 const CATEGORY_CONFIG: Record<InsightCategory, CategoryConfig> = {
-  staffing:          { label: 'Staffing',           border: 'border-blue-400',   icon: <Icon name="store"     size={15} /> },
-  peak_hours:        { label: 'Peak Hours',          border: 'border-amber-400',  icon: <Icon name="analytics" size={15} /> },
-  slow_days:         { label: 'Slow Days',           border: 'border-orange-400', icon: <Icon name="arrowDown" size={15} /> },
-  sales_anomaly:     { label: 'Sales Anomaly',       border: 'border-red-400',    icon: <Icon name="attention" size={15} /> },
-  menu_performance:  { label: 'Menu Performance',    border: 'border-green-400',  icon: <Icon name="star"      size={15} /> },
-  operational:       { label: 'Operational',         border: 'border-purple-400', icon: <Icon name="sync"      size={15} /> },
-  customer_behavior: { label: 'Customer Behavior',   border: 'border-navy-500',   icon: <Icon name="insights"  size={15} /> },
+  staffing:          { label: 'Staffing',         icon: <Icon name="store"     size={14} /> },
+  peak_hours:        { label: 'Peak Hours',        icon: <Icon name="analytics" size={14} /> },
+  slow_days:         { label: 'Slow Days',         icon: <Icon name="arrowDown" size={14} /> },
+  sales_anomaly:     { label: 'Sales Anomaly',     icon: <Icon name="attention" size={14} /> },
+  menu_performance:  { label: 'Menu Performance',  icon: <Icon name="star"      size={14} /> },
+  operational:       { label: 'Operational',       icon: <Icon name="sync"      size={14} /> },
+  customer_behavior: { label: 'Customer Behavior', icon: <Icon name="insights"  size={14} /> },
 };
 
-const FALLBACK_CATEGORY: CategoryConfig = {
-  label: 'General', border: 'border-gray-300', icon: <Icon name="dot" size={15} />,
-};
+const FALLBACK_CATEGORY: CategoryConfig = { label: 'General', icon: <Icon name="dot" size={14} /> };
 
 function getCategoryConfig(category: string): CategoryConfig {
   return CATEGORY_CONFIG[category as InsightCategory] ?? FALLBACK_CATEGORY;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatGeneratedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -99,85 +127,103 @@ const SkeletonCard = () => (
       <div className="h-4 w-full bg-gray-100 rounded" />
       <div className="h-4 w-5/6 bg-gray-100 rounded" />
     </div>
-    <div className="space-y-2 pt-1">
-      <div className="h-3 w-32 bg-gray-100 rounded" />
-      <div className="h-4 w-full bg-gray-100 rounded" />
-    </div>
+    <div className="h-9 w-40 bg-gray-100 rounded-lg" />
   </div>
 );
 
-// ─── Executive Summary ────────────────────────────────────────────────────────
+// ─── Explainability bar (Sprint T4) ─────────────────────────────────────────────
+
+const CONFIDENCE_CHIP: Record<InsightsMeta['confidence'], string> = {
+  high:   'bg-green-50 text-green-700 border border-green-200',
+  medium: 'bg-warn-bg text-warn border border-warn/30',
+  low:    'bg-navy-50 text-navy-700 border border-navy-100',
+};
+
+const ExplainabilityBar = ({ meta }: { meta: InsightsMeta }) => {
+  const facts = [
+    `${meta.source}`,
+    `${meta.daysWithData} day${meta.daysWithData === 1 ? '' : 's'} of data`,
+    `${meta.ordersAnalyzed.toLocaleString('en-US')} orders`,
+    `${meta.itemsAnalyzed} item${meta.itemsAnalyzed === 1 ? '' : 's'}`,
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-ink-3">
+      <span className="font-semibold text-ink-2">Analyzed:</span>
+      {facts.map((f, i) => (
+        <span key={i} className="inline-flex items-center gap-2">
+          {i > 0 && <span className="text-line">·</span>}
+          {f}
+        </span>
+      ))}
+      <span className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${CONFIDENCE_CHIP[meta.confidence]}`}>
+        {meta.confidence} confidence
+      </span>
+      <span className="ml-auto text-ink-3">
+        Generated {formatGeneratedAt(meta.generatedAt)}
+      </span>
+    </div>
+  );
+};
+
+// ─── Executive Summary ──────────────────────────────────────────────────────────
 
 const ExecutiveSummary = ({ insights }: { insights: Insight[] }) => {
-  const criticalCount = insights.filter(i => derivePriority(i) === 'critical').length;
-  const opportunityCount = insights.filter(
-    i => derivePriority(i) === 'opportunity' || derivePriority(i) === 'positive'
-  ).length;
-
-  const bullets = insights.slice(0, 4).map(i => i.metric);
-  const topAction = insights[0]?.recommendation ?? '';
+  const highCount = insights.filter((i) => i.priority === 'high').length;
+  const mediumCount = insights.filter((i) => i.priority === 'medium').length;
+  const top = insights[0];
 
   return (
     <div className="bg-navy-700 text-white rounded-xl p-5 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-[13px] font-bold uppercase tracking-[0.08em] text-white/60">
-          This Week's Highlights
+          What to do next
         </h2>
         <div className="flex gap-2">
-          {criticalCount > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 text-[11.5px] font-bold border border-red-400/40">
-              {criticalCount} need{criticalCount === 1 ? 's' : ''} attention
+          {highCount > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 text-[11.5px] font-bold border border-red-400/40">
+              {highCount} high priority
             </span>
           )}
-          {opportunityCount > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 text-[11.5px] font-bold border border-green-400/40">
-              {opportunityCount} opportunit{opportunityCount === 1 ? 'y' : 'ies'}
+          {mediumCount > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 text-[11.5px] font-bold border border-amber-400/40">
+              {mediumCount} this week
             </span>
           )}
         </div>
       </div>
 
-      <ul className="space-y-1.5">
-        {bullets.map((b, i) => (
-          <li key={i} className="flex items-start gap-2 text-[13px] text-white/80 leading-snug">
-            <span className="mt-[3px] w-1.5 h-1.5 rounded-full bg-white/40 flex-shrink-0" />
-            {b}
-          </li>
-        ))}
-      </ul>
-
-      {topAction && (
-        <div className="pt-1 border-t border-white/10">
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/50 mb-1">
-            Top priority today
+      {top && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/50">
+            Top priority
           </p>
-          <p className="text-[13px] text-white leading-snug">{topAction}</p>
+          <p className="text-[15px] font-bold text-white leading-snug">{top.title}</p>
+          <p className="text-[13px] text-white/80 leading-snug">{top.action}</p>
+          <Link
+            to={getLinkConfig(top.link).to}
+            className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-lg bg-white text-navy-700 text-[12.5px] font-bold hover:bg-white/90 transition-colors"
+          >
+            {getLinkConfig(top.link).label}
+            <Icon name="chevron" size={14} className="-rotate-90" />
+          </Link>
         </div>
       )}
     </div>
   );
 };
 
-// ─── Insight Card ─────────────────────────────────────────────────────────────
-
-const PRIORITY_BORDER: Record<Priority, string> = {
-  critical:    'border-red-400',
-  positive:    'border-green-500',
-  opportunity: '',
-  info:        '',
-};
+// ─── Insight Card ────────────────────────────────────────────────────────────────
 
 const InsightCard = ({ insight, rank }: { insight: Insight; rank: number }) => {
-  const priority = derivePriority(insight);
-  const priorityCfg = PRIORITY_CONFIG[priority];
+  const priorityCfg = PRIORITY_CONFIG[insight.priority] ?? PRIORITY_CONFIG.medium;
   const categoryCfg = getCategoryConfig(insight.category);
-  const leftBorder = PRIORITY_BORDER[priority] || categoryCfg.border;
+  const linkCfg = getLinkConfig(insight.link);
 
   return (
-    <div className={`${priorityCfg.cardBg} rounded-xl border-l-4 ${leftBorder} border border-line flex flex-col`}>
-      {/* Card header */}
+    <div className={`${priorityCfg.cardBg} rounded-xl border-l-4 ${priorityCfg.border} border border-line flex flex-col`}>
+      {/* Card header — priority + category */}
       <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-2 flex-wrap">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-bold ${priorityCfg.chip}`}>
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11.5px] font-bold ${priorityCfg.chip}`}>
           {priorityCfg.label}
         </span>
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-canvas text-ink-2 border border-line">
@@ -186,30 +232,48 @@ const InsightCard = ({ insight, rank }: { insight: Insight; rank: number }) => {
         </span>
       </div>
 
-      {/* Title */}
-      <div className="px-5 pb-4">
+      {/* Title + one-sentence explanation */}
+      <div className="px-5 pb-3">
         <div className="flex items-start gap-2">
           <span className="mt-0.5 text-[11px] font-bold text-ink-3 bg-canvas border border-line rounded px-1.5 py-0.5 flex-shrink-0">
             #{rank}
           </span>
           <h3 className="text-[15px] font-bold text-ink leading-snug">{insight.title}</h3>
         </div>
+        <p className="text-[13px] text-ink-2 leading-snug mt-2">{insight.explanation}</p>
       </div>
 
-      {/* What happened */}
-      <div className="mx-5 mb-4 bg-canvas rounded-lg px-4 py-3 space-y-1">
+      {/* Supporting numbers */}
+      <div className="mx-5 mb-3 bg-canvas rounded-lg px-4 py-3 space-y-1">
         <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-ink-3">
-          What happened
+          Supporting numbers
         </p>
-        <p className="text-[13px] font-medium text-ink-2 leading-snug">{insight.metric}</p>
+        <p className="text-[13px] font-semibold text-ink leading-snug tnum">{insight.metric}</p>
       </div>
 
-      {/* Action */}
-      <div className="mx-5 mb-5 border-l-2 border-navy-700 pl-3 space-y-1">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-navy-700">
-          Action for tomorrow morning
+      {/* Expected impact */}
+      <div className="mx-5 mb-3 flex items-baseline gap-2">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-ink-3 flex-shrink-0">
+          Impact
         </p>
-        <p className="text-[13px] text-ink leading-snug">{insight.recommendation}</p>
+        <p className="text-[13px] font-semibold text-navy-700 leading-snug">{insight.impact}</p>
+      </div>
+
+      {/* Recommended action + investigate link */}
+      <div className="mt-auto mx-5 mb-5 border-l-2 border-navy-700 pl-3 space-y-2">
+        <div className="space-y-1">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-navy-700">
+            Recommended action
+          </p>
+          <p className="text-[13px] text-ink leading-snug">{insight.action}</p>
+        </div>
+        <Link
+          to={linkCfg.to}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface text-[12.5px] font-bold text-navy-700 hover:bg-navy-50 transition-colors"
+        >
+          {linkCfg.label}
+          <Icon name="chevron" size={14} className="-rotate-90" />
+        </Link>
       </div>
     </div>
   );
@@ -250,17 +314,31 @@ const InsightsPanel = () => {
         const raw = body.data?.insights;
         if (!Array.isArray(raw)) { setFetchState({ status: 'empty' }); setIsRefreshing(false); return; }
 
-        const valid = raw.filter(
-          (item): item is Insight =>
-            item !== null &&
-            typeof item === 'object' &&
-            typeof item.category === 'string' &&
-            typeof item.title === 'string' && item.title.length > 0 &&
-            typeof item.recommendation === 'string' && item.recommendation.length > 0 &&
-            typeof item.metric === 'string',
-        );
+        const valid = raw
+          .filter(
+            (item): item is Insight =>
+              item !== null &&
+              typeof item === 'object' &&
+              typeof item.category === 'string' &&
+              typeof item.title === 'string' && item.title.length > 0 &&
+              typeof item.explanation === 'string' && item.explanation.length > 0 &&
+              typeof item.metric === 'string' &&
+              typeof item.action === 'string' && item.action.length > 0,
+          )
+          // Normalise optional fields so older/partial payloads still render.
+          .map((i) => ({
+            ...i,
+            priority: (['high', 'medium', 'low'] as Priority[]).includes(i.priority) ? i.priority : 'medium',
+            impact: i.impact ?? '',
+            link: (i.link in LINK_CONFIG ? i.link : 'menu') as InsightLink,
+          }))
+          .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]);
 
-        setFetchState(valid.length === 0 ? { status: 'empty' } : { status: 'data', insights: valid });
+        setFetchState(
+          valid.length === 0
+            ? { status: 'empty' }
+            : { status: 'data', insights: valid, meta: body.data?.meta },
+        );
         setIsRefreshing(false);
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -287,7 +365,7 @@ const InsightsPanel = () => {
         <div>
           <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">AI Insights</h1>
           <p className="text-[13.5px] font-medium text-ink-3 mt-[5px]">
-            {restaurant ? `${restaurant.name} · ` : ''}Last 30 days
+            {restaurant ? `${restaurant.name} · ` : ''}Prioritized actions from your last 30 days
           </p>
         </div>
         {fetchState.status === 'data' && (
@@ -305,9 +383,9 @@ const InsightsPanel = () => {
       {/* Loading */}
       {fetchState.status === 'loading' && (
         <div className="space-y-6">
-          <div className="bg-navy-700/10 rounded-xl h-[180px] animate-pulse" />
+          <div className="bg-navy-700/10 rounded-xl h-[160px] animate-pulse" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         </div>
       )}
@@ -345,8 +423,9 @@ const InsightsPanel = () => {
 
       {/* Data */}
       {fetchState.status === 'data' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <ExecutiveSummary insights={fetchState.insights} />
+          {fetchState.meta && <ExplainabilityBar meta={fetchState.meta} />}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {fetchState.insights.map((insight, idx) => (
               <InsightCard key={`${insight.category}-${idx}`} insight={insight} rank={idx + 1} />

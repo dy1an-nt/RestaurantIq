@@ -30,9 +30,35 @@ router.get('/', async (req: Request, res: Response) => {
     return res.status(500).json({ data: null, error: 'Failed to fetch summaries' });
   }
 
+  const rows = (summaries ?? []) as unknown as SummaryRow[];
+
+  // Explainability metadata (Sprint T4): tell the owner exactly what the AI
+  // looked at — period, volume, and freshness — so the recommendations feel
+  // transparent rather than magical. Derived from the same rows we send to Claude.
+  const distinctDays = new Set(rows.map((r) => r.date)).size;
+  const distinctItems = new Set(rows.map((r) => r.menu_item_id).filter(Boolean)).size;
+  const ordersAnalyzed = rows.reduce((sum, r) => sum + (r.total_orders ?? 0), 0);
+
+  // Confidence reflects how much history backed the analysis. Demand/trend
+  // signals stabilise with more days of data, so we key off distinct days.
+  const confidence: 'high' | 'medium' | 'low' =
+    distinctDays >= 21 ? 'high' : distinctDays >= 10 ? 'medium' : 'low';
+
+  const meta = {
+    generatedAt: new Date().toISOString(),
+    periodDays: 30,
+    rangeStart: sinceStr,
+    rangeEnd: new Date().toISOString().split('T')[0],
+    daysWithData: distinctDays,
+    itemsAnalyzed: distinctItems,
+    ordersAnalyzed,
+    confidence,
+    source: 'Square + DoorDash sales',
+  };
+
   try {
-    const result = await generateInsights(summaries as unknown as SummaryRow[]);
-    return res.json({ data: result, error: null });
+    const result = await generateInsights(rows);
+    return res.json({ data: { ...result, meta }, error: null });
   } catch {
     return res.status(502).json({ data: null, error: 'AI insights unavailable — try again shortly' });
   }
