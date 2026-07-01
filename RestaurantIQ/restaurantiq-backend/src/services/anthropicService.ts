@@ -1,4 +1,5 @@
 import Anthropic, { APIError } from '@anthropic-ai/sdk';
+import { z } from 'zod';
 
 export interface SummaryRow {
   menu_item_id: string | null;
@@ -48,6 +49,30 @@ export interface InsightsResult {
 
 // Ordering weight for sorting; lower sorts first.
 const PRIORITY_RANK: Record<InsightPriority, number> = { high: 0, medium: 1, low: 2 };
+
+// Runtime contract for one insight coming back from the model. tool_choice
+// forces the model to call report_insights, but the API does not guarantee the
+// arguments conform to the tool's input_schema — so every insight is validated
+// here before it ships through GET /api/insights to any consumer (the SPA
+// re-normalizes defensively, but the API contract is enforced server-side).
+const insightSchema = z.object({
+  category: z.enum([
+    'staffing',
+    'peak_hours',
+    'slow_days',
+    'sales_anomaly',
+    'menu_performance',
+    'operational',
+    'customer_behavior',
+  ]),
+  priority: z.enum(['high', 'medium', 'low']),
+  title: z.string().min(1),
+  explanation: z.string().min(1),
+  metric: z.string(),
+  impact: z.string(),
+  action: z.string().min(1),
+  link: z.enum(['analytics', 'forecast', 'margins', 'menu', 'alerts']),
+});
 
 const INSIGHTS_TOOL: Anthropic.Tool = {
   name: 'report_insights',
@@ -245,13 +270,27 @@ export async function generateInsights(summaries: SummaryRow[]): Promise<Insight
     );
     if (!toolBlock) throw new Error('No tool_use block in response');
 
-    const result = toolBlock.input as InsightsResult;
+    const rawInsights = (toolBlock.input as { insights?: unknown }).insights;
+    if (!Array.isArray(rawInsights)) throw new Error('Tool output has no insights array');
+
+    // Validate per-insight and drop the bad ones rather than failing the whole
+    // call: one hallucinated enum value shouldn't cost the owner the other five.
+    const valid: Insight[] = [];
+    for (const item of rawInsights) {
+      const parsed = insightSchema.safeParse(item);
+      if (parsed.success) {
+        valid.push(parsed.data);
+      } else {
+        console.error('[insights] dropped malformed insight:', parsed.error.issues[0]?.message);
+      }
+    }
+    if (valid.length === 0) throw new Error('No insight in tool output passed schema validation');
 
     // Defensive re-sort by priority: the prompt asks for most-important-first,
     // but we guarantee the ordering here so the frontend can render top-down
     // without re-deriving it. Stable sort preserves the model's intra-tier order.
-    const insights = [...(result.insights ?? [])].sort(
-      (a, b) => (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3),
+    const insights = valid.sort(
+      (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
     );
 
     return { insights };

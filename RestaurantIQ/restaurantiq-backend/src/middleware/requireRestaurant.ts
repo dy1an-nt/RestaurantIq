@@ -56,6 +56,14 @@ export function requireRestaurant(columns: string = 'id') {
     }
 
     const restaurant = data as unknown as ResolvedRestaurant;
+    // Guard against a caller passing a `columns` list that omits `id`: every
+    // downstream handler filters on req.restaurantId, and an undefined id would
+    // silently produce queries scoped to nothing.
+    if (typeof restaurant.id !== 'string' || restaurant.id.length === 0) {
+      console.error('[requireRestaurant] columns must include "id"; got:', columns);
+      res.status(500).json({ data: null, error: 'Failed to resolve restaurant' });
+      return;
+    }
     req.restaurant = restaurant;
     req.restaurantId = restaurant.id;
     next();
