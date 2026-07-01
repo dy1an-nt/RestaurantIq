@@ -18,6 +18,11 @@
  *   8. summary.biggest_margin_gap_item reflects widest gap
  */
 
+// The service module imports ../db, which constructs a real Supabase client
+// from env at import time — without a local .env (e.g. in CI) that throws
+// before any test runs. Only the pure transform is under test, so stub it out.
+jest.mock('../../db', () => ({ supabase: {} }));
+
 import { buildChannelMarginAnalysis } from '../channelMarginService';
 
 // ---------------------------------------------------------------------------
