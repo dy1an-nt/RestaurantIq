@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth';
 import { requireRestaurant } from '../middleware/requireRestaurant';
 import { validateBody } from '../middleware/validate';
 import { createAiRateLimiter } from '../middleware/rateLimit';
-import { chatDailyCap } from '../middleware/chatDailyCap';
+import { chatDailyCap, getChatUsage } from '../middleware/chatDailyCap';
 import { sendMessage } from '../services/chatService';
 
 const router = Router();
@@ -35,27 +35,17 @@ const sendMessageSchema = z.object({
     .max(2000, 'content must be 2000 characters or fewer'),
 });
 
-// GET /api/chat/usage  — must come before /:id to avoid route shadowing
+// GET /api/chat/usage  — must come before /:id to avoid route shadowing.
+// Reads the same numbers chatDailyCap enforces, so display and enforcement
+// can't drift.
 router.get('/usage', async (req: Request, res: Response) => {
-  const midnight = new Date();
-  midnight.setUTCHours(0, 0, 0, 0);
-  const nextMidnight = new Date(midnight);
-  nextMidnight.setUTCDate(nextMidnight.getUTCDate() + 1);
-
-  const { count } = await supabase
-    .from('chat_messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('restaurant_id', req.restaurantId!)
-    .eq('role', 'user')
-    .gte('created_at', midnight.toISOString());
-
-  const daily_cap = parseInt(process.env.CHAT_DAILY_MESSAGE_CAP ?? '50', 10);
+  const usage = await getChatUsage(req.restaurantId!);
 
   return res.json({
     data: {
-      messages_today: count ?? 0,
-      daily_cap,
-      resets_at: nextMidnight.toISOString(),
+      messages_today: usage.messagesToday,
+      daily_cap: usage.dailyCap,
+      resets_at: usage.resetsAt,
     },
     error: null,
   });

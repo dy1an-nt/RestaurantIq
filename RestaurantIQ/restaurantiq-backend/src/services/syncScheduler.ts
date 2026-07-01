@@ -335,12 +335,17 @@ export const syncIntegration = async (
 
   // 3. Run the provider ingest under a hard timeout; release the lock no matter what.
   const startedAt = Date.now();
+  // The timeout handle must be cleared once the race settles: Promise.race
+  // doesn't cancel the loser, so an uncleared timer stays live for the full
+  // 90s after every sync — holding the event loop open (slow shutdowns, and
+  // Jest force-exiting its worker).
+  let timeoutHandle: NodeJS.Timeout | undefined;
   try {
     const result = await Promise.race([
       ingestFor(provider, restaurantId),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Sync timed out')), SYNC_TIMEOUT_MS),
-      ),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error('Sync timed out')), SYNC_TIMEOUT_MS);
+      }),
     ]);
     const durationMs = Date.now() - startedAt;
     await releaseLock(restaurantId, provider, 'success', null);
@@ -422,6 +427,8 @@ export const syncIntegration = async (
       jobId,
     });
     return { restaurantId, provider, status, ok: false, error: message };
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 };
 
