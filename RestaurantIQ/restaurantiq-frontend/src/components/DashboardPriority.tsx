@@ -98,7 +98,9 @@ const DashboardPriority = () => {
     );
   }
 
-  const style = SEVERITY_STYLE[top.severity];
+  // Fall back to the warning style for severities this build doesn't know yet —
+  // a new severity added by migration must not crash the dashboard render.
+  const style = SEVERITY_STYLE[top.severity] ?? SEVERITY_STYLE.warning;
   const action = ACTION_BY_TYPE[top.type] ?? { label: 'View Alerts', to: '/alerts' };
 
   return (

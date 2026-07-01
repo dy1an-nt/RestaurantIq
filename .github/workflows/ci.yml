@@ -66,5 +66,10 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Build
+        # tsc alone doesn't catch Vite/Rollup failures (case-sensitive imports
+        # on Linux, asset resolution) — without this they first surface at the
+        # Vercel deploy, after merge.
+        run: npm run build
       - name: Audit production dependencies (fail on high+)
         run: npm audit --omit=dev --audit-level=high
