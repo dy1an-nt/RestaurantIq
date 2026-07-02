@@ -1,4 +1,10 @@
 {
+  // ts-node lazily compiles only the modules it reaches through imports, so the
+  // ambient src/types/express.d.ts augmentation (req.user/req.restaurantId) is
+  // invisible to `npm run dev` without files:true — tsc passes, dev boot fails.
+  "ts-node": {
+    "files": true
+  },
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
