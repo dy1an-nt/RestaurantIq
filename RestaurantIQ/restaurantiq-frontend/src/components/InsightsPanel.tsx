@@ -18,8 +18,13 @@ type InsightCategory =
 
 type Priority = 'high' | 'medium' | 'low';
 type InsightLink = 'analytics' | 'forecast' | 'margins' | 'menu' | 'alerts';
+type InsightStatus = 'active' | 'completed' | 'dismissed';
 
 interface Insight {
+  // Persisted insights (Sprint U) carry an id + lifecycle fields; the
+  // non-persisted "not enough data yet" fallback does not, so all are optional
+  // and cards without an id simply don't get workflow buttons.
+  id?: string;
   category: InsightCategory;
   priority: Priority;
   title: string;
@@ -28,6 +33,10 @@ interface Insight {
   impact: string;
   action: string;
   link: InsightLink;
+  status?: string;
+  first_seen_at?: string;
+  last_seen_at?: string;
+  resolved_at?: string | null;
 }
 
 interface InsightsMeta {
@@ -44,15 +53,15 @@ interface InsightsMeta {
 
 interface InsightsResult {
   insights: Insight[];
-  meta?: InsightsMeta;
+  meta?: InsightsMeta | null;
 }
 
 type FetchState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'empty' }
-  | { status: 'data'; insights: Insight[]; meta?: InsightsMeta };
+  | { status: 'empty'; meta?: InsightsMeta | null }
+  | { status: 'data'; insights: Insight[]; meta?: InsightsMeta | null };
 
 // ─── Priority config ──────────────────────────────────────────────────────────
 
@@ -103,6 +112,14 @@ function getCategoryConfig(category: string): CategoryConfig {
   return CATEGORY_CONFIG[category as InsightCategory] ?? FALLBACK_CATEGORY;
 }
 
+// ─── Status tabs (Sprint U Phase 2) ───────────────────────────────────────────
+
+const STATUS_TABS: { key: InsightStatus; label: string }[] = [
+  { key: 'active',    label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'dismissed', label: 'Dismissed' },
+];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatGeneratedAt(iso: string): string {
@@ -111,6 +128,30 @@ function formatGeneratedAt(iso: string): string {
   return d.toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
+}
+
+/** Validate + normalise the raw insights array from any of the API responses. */
+function parseInsights(raw: unknown): Insight[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (item): item is Insight =>
+        item !== null &&
+        typeof item === 'object' &&
+        typeof item.category === 'string' &&
+        typeof item.title === 'string' && item.title.length > 0 &&
+        typeof item.explanation === 'string' && item.explanation.length > 0 &&
+        typeof item.metric === 'string' &&
+        typeof item.action === 'string' && item.action.length > 0,
+    )
+    // Normalise optional fields so older/partial payloads still render.
+    .map((i) => ({
+      ...i,
+      priority: (['high', 'medium', 'low'] as Priority[]).includes(i.priority) ? i.priority : 'medium',
+      impact: i.impact ?? '',
+      link: (i.link in LINK_CONFIG ? i.link : 'menu') as InsightLink,
+    }))
+    .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]);
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -214,17 +255,33 @@ const ExecutiveSummary = ({ insights }: { insights: Insight[] }) => {
 
 // ─── Insight Card ────────────────────────────────────────────────────────────────
 
-const InsightCard = ({ insight, rank }: { insight: Insight; rank: number }) => {
+interface InsightCardProps {
+  insight: Insight;
+  rank: number;
+  tab: InsightStatus;
+  isNew: boolean;
+  pending: boolean;
+  onSetStatus: (next: InsightStatus) => void;
+}
+
+const InsightCard = ({ insight, rank, tab, isNew, pending, onSetStatus }: InsightCardProps) => {
   const priorityCfg = PRIORITY_CONFIG[insight.priority] ?? PRIORITY_CONFIG.medium;
   const categoryCfg = getCategoryConfig(insight.category);
   const linkCfg = getLinkConfig(insight.link);
 
   return (
     <div className={`${priorityCfg.cardBg} rounded-xl border-l-4 ${priorityCfg.border} border border-line flex flex-col`}>
-      {/* Card header — priority + category */}
+      {/* Card header — priority + new-since-last-visit + category */}
       <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-2 flex-wrap">
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11.5px] font-bold ${priorityCfg.chip}`}>
-          {priorityCfg.label}
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11.5px] font-bold ${priorityCfg.chip}`}>
+            {priorityCfg.label}
+          </span>
+          {isNew && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold bg-green-50 text-green-700 border border-green-200">
+              New
+            </span>
+          )}
         </span>
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-canvas text-ink-2 border border-line">
           {categoryCfg.icon}
@@ -260,7 +317,7 @@ const InsightCard = ({ insight, rank }: { insight: Insight; rank: number }) => {
       </div>
 
       {/* Recommended action + investigate link */}
-      <div className="mt-auto mx-5 mb-5 border-l-2 border-navy-700 pl-3 space-y-2">
+      <div className="mt-auto mx-5 mb-4 border-l-2 border-navy-700 pl-3 space-y-2">
         <div className="space-y-1">
           <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-navy-700">
             Recommended action
@@ -275,6 +332,47 @@ const InsightCard = ({ insight, rank }: { insight: Insight; rank: number }) => {
           <Icon name="chevron" size={14} className="-rotate-90" />
         </Link>
       </div>
+
+      {/* Workflow actions (Sprint U Phase 2) — persisted insights only */}
+      {insight.id && (
+        <div className="border-t border-line px-5 py-3 flex items-center gap-2">
+          {tab === 'active' ? (
+            <>
+              <button
+                onClick={() => onSetStatus('completed')}
+                disabled={pending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface text-[12px] font-bold text-green-700 hover:bg-green-50 transition-colors disabled:opacity-60"
+              >
+                <Icon name="check" size={14} />
+                Mark done
+              </button>
+              <button
+                onClick={() => onSetStatus('dismissed')}
+                disabled={pending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface text-[12px] font-bold text-ink-3 hover:bg-canvas transition-colors disabled:opacity-60"
+              >
+                <Icon name="close" size={14} />
+                Dismiss
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-[11.5px] font-medium text-ink-3">
+                {tab === 'completed' ? 'Completed' : 'Dismissed'}
+                {insight.resolved_at ? ` ${formatGeneratedAt(insight.resolved_at)}` : ''}
+              </span>
+              <button
+                onClick={() => onSetStatus('active')}
+                disabled={pending}
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface text-[12px] font-bold text-navy-700 hover:bg-navy-50 transition-colors disabled:opacity-60"
+              >
+                <Icon name="undo" size={14} />
+                Reactivate
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -285,68 +383,54 @@ const InsightsPanel = () => {
   const { session } = useAuth();
   const { restaurant } = useRestaurant();
   const [fetchState, setFetchState] = useState<FetchState>({ status: 'idle' });
+  const [tab, setTab] = useState<InsightStatus>('active');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // ISO timestamp of the PREVIOUS visit to this panel — insights first seen
+  // after it get the "New" badge. null on the very first visit (badging every
+  // card would be noise, so nothing is marked).
+  const [newSince, setNewSince] = useState<string | null>(null);
 
-  const load = useCallback((isRefresh = false) => {
+  useEffect(() => {
+    if (!restaurant?.id) return;
+    const key = `riq:insights-last-visit:${restaurant.id}`;
+    setNewSince(localStorage.getItem(key));
+    localStorage.setItem(key, new Date().toISOString());
+  }, [restaurant?.id]);
+
+  const load = useCallback((status: InsightStatus) => {
     if (!session) {
       setFetchState({ status: 'error', message: 'Not authenticated. Please sign in again.' });
       return;
     }
 
     const controller = new AbortController();
-    if (isRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setFetchState({ status: 'loading' });
-    }
+    setFetchState({ status: 'loading' });
+    setActionError(null);
 
     (async () => {
       try {
-        const res = await apiFetch('/api/insights', { signal: controller.signal });
+        const res = await apiFetch(`/api/insights?status=${status}`, { signal: controller.signal });
         const body: { data: InsightsResult | null; error: string | null } = await res.json();
 
         if (!res.ok || body.error) {
           setFetchState({ status: 'error', message: body.error ?? `Request failed (${res.status})` });
-          setIsRefreshing(false);
           return;
         }
 
-        const raw = body.data?.insights;
-        if (!Array.isArray(raw)) { setFetchState({ status: 'empty' }); setIsRefreshing(false); return; }
-
-        const valid = raw
-          .filter(
-            (item): item is Insight =>
-              item !== null &&
-              typeof item === 'object' &&
-              typeof item.category === 'string' &&
-              typeof item.title === 'string' && item.title.length > 0 &&
-              typeof item.explanation === 'string' && item.explanation.length > 0 &&
-              typeof item.metric === 'string' &&
-              typeof item.action === 'string' && item.action.length > 0,
-          )
-          // Normalise optional fields so older/partial payloads still render.
-          .map((i) => ({
-            ...i,
-            priority: (['high', 'medium', 'low'] as Priority[]).includes(i.priority) ? i.priority : 'medium',
-            impact: i.impact ?? '',
-            link: (i.link in LINK_CONFIG ? i.link : 'menu') as InsightLink,
-          }))
-          .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]);
-
+        const valid = parseInsights(body.data?.insights);
         setFetchState(
           valid.length === 0
-            ? { status: 'empty' }
+            ? { status: 'empty', meta: body.data?.meta }
             : { status: 'data', insights: valid, meta: body.data?.meta },
         );
-        setIsRefreshing(false);
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') return;
         setFetchState({
           status: 'error',
           message: err instanceof Error ? err.message : 'An unexpected error occurred.',
         });
-        setIsRefreshing(false);
       }
     })();
 
@@ -354,9 +438,76 @@ const InsightsPanel = () => {
   }, [session]);
 
   useEffect(() => {
-    const cleanup = load(false);
+    const cleanup = load(tab);
     return cleanup;
-  }, [load]);
+  }, [load, tab]);
+
+  // On-demand regeneration (Sprint U): POST /refresh is the only call here that
+  // spends Claude money — a plain GET is just a table read now. Failures keep
+  // the current list on screen instead of nuking it to an error state.
+  const refresh = async () => {
+    setIsRefreshing(true);
+    setActionError(null);
+    try {
+      const res = await apiFetch('/api/insights/refresh', { method: 'POST' });
+      const body: { data: InsightsResult | null; error: string | null } | null =
+        await res.json().catch(() => null);
+      if (!res.ok || !body || body.error) {
+        throw new Error(body?.error ?? `Refresh failed (${res.status})`);
+      }
+      const valid = parseInsights(body.data?.insights);
+      setFetchState(
+        valid.length === 0
+          ? { status: 'empty', meta: body.data?.meta }
+          : { status: 'data', insights: valid, meta: body.data?.meta },
+      );
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Refresh failed — try again shortly.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const setInsightStatus = async (insight: Insight, next: InsightStatus) => {
+    if (!insight.id || actioningId) return;
+    setActioningId(insight.id);
+    setActionError(null);
+    try {
+      const res = await apiFetch(`/api/insights/${insight.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: next }),
+      });
+      const body: { data: unknown; error: string | null } | null = await res.json().catch(() => null);
+      if (!res.ok || !body || body.error) {
+        throw new Error(body?.error ?? `Update failed (${res.status})`);
+      }
+      // The insight left this tab's status — drop its card.
+      setFetchState((prev) => {
+        if (prev.status !== 'data') return prev;
+        const remaining = prev.insights.filter((i) => i.id !== insight.id);
+        return remaining.length === 0
+          ? { status: 'empty', meta: prev.meta }
+          : { ...prev, insights: remaining };
+      });
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update insight.');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const isNewInsight = (insight: Insight): boolean =>
+    Boolean(
+      tab === 'active' &&
+      newSince &&
+      insight.first_seen_at &&
+      new Date(insight.first_seen_at).getTime() > new Date(newSince).getTime(),
+    );
+
+  // The active tab's empty state depends on WHY it's empty: not enough synced
+  // data yet (onboarding nudge) vs. every insight actioned (all caught up).
+  const emptyMeta = fetchState.status === 'empty' ? fetchState.meta : undefined;
+  const hasEnoughData = (emptyMeta?.daysWithData ?? 0) >= 3;
 
   return (
     <div className="space-y-6">
@@ -368,9 +519,9 @@ const InsightsPanel = () => {
             {restaurant ? `${restaurant.name} · ` : ''}Prioritized actions from your last 30 days
           </p>
         </div>
-        {fetchState.status === 'data' && (
+        {tab === 'active' && (fetchState.status === 'data' || fetchState.status === 'empty') && (
           <button
-            onClick={() => { load(true); }}
+            onClick={() => { void refresh(); }}
             disabled={isRefreshing}
             className="flex items-center gap-2 h-[38px] px-4 rounded-[9px] border border-line bg-surface text-[13px] font-semibold text-ink-2 hover:bg-canvas transition-colors flex-shrink-0 disabled:opacity-60"
           >
@@ -380,10 +531,36 @@ const InsightsPanel = () => {
         )}
       </div>
 
+      {/* Status tabs (Sprint U Phase 2) */}
+      <div className="flex gap-1 bg-canvas border border-line rounded-lg p-1 w-fit">
+        {STATUS_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-3.5 py-1.5 rounded-md text-[12.5px] font-bold transition-colors ${
+              tab === t.key
+                ? 'bg-surface text-navy-700 shadow-sm border border-line'
+                : 'text-ink-3 hover:text-ink-2'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Action error — kept out of the main fetch state so a failed button
+          click or refresh doesn't wipe the list off the screen. */}
+      {actionError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[12.5px] font-medium text-red-600">
+          <Icon name="attention" size={15} className="flex-shrink-0" />
+          {actionError}
+        </div>
+      )}
+
       {/* Loading */}
       {fetchState.status === 'loading' && (
         <div className="space-y-6">
-          <div className="bg-navy-700/10 rounded-xl h-[160px] animate-pulse" />
+          {tab === 'active' && <div className="bg-navy-700/10 rounded-xl h-[160px] animate-pulse" />}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
@@ -396,7 +573,7 @@ const InsightsPanel = () => {
           <Icon name="attention" size={28} className="text-neg mx-auto" />
           <p className="text-sm font-medium text-neg">{fetchState.message}</p>
           <button
-            onClick={() => { load(false); }}
+            onClick={() => { load(tab); }}
             className="px-4 py-2 bg-navy-700 text-white text-sm font-bold rounded-lg hover:bg-navy-800 transition-colors"
           >
             Try again
@@ -406,29 +583,60 @@ const InsightsPanel = () => {
 
       {/* Empty */}
       {fetchState.status === 'empty' && (
-        <div className="bg-white rounded-xl border border-line p-10 text-center space-y-3">
-          <Icon name="insights" size={32} className="text-ink-3 mx-auto" />
-          <p className="text-base font-bold text-gray-700">No insights yet</p>
-          <p className="text-sm text-ink-3 max-w-xs mx-auto">
-            Connect your Square POS and sync at least 3 days of sales — AI recommendations appear once there's enough data to analyze.
-          </p>
-          <Link
-            to="/integrations"
-            className="inline-flex items-center mt-2 px-4 py-2 bg-navy-700 text-white text-sm font-bold rounded-lg hover:bg-navy-800 transition-colors"
-          >
-            Connect Square
-          </Link>
-        </div>
+        tab !== 'active' ? (
+          <div className="bg-white rounded-xl border border-line p-10 text-center space-y-3">
+            <Icon name={tab === 'completed' ? 'check' : 'close'} size={32} className="text-ink-3 mx-auto" />
+            <p className="text-base font-bold text-gray-700">
+              No {tab} insights
+            </p>
+            <p className="text-sm text-ink-3 max-w-xs mx-auto">
+              {tab === 'completed'
+                ? 'Insights you mark done will show up here.'
+                : 'Insights you dismiss will show up here.'}
+            </p>
+          </div>
+        ) : hasEnoughData ? (
+          <div className="bg-white rounded-xl border border-line p-10 text-center space-y-3">
+            <Icon name="check" size={32} className="text-green-700 mx-auto" />
+            <p className="text-base font-bold text-gray-700">You're all caught up</p>
+            <p className="text-sm text-ink-3 max-w-xs mx-auto">
+              Every recommendation has been actioned. New insights appear automatically after your
+              next sync, or hit Refresh to regenerate now.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-line p-10 text-center space-y-3">
+            <Icon name="insights" size={32} className="text-ink-3 mx-auto" />
+            <p className="text-base font-bold text-gray-700">No insights yet</p>
+            <p className="text-sm text-ink-3 max-w-xs mx-auto">
+              Connect your Square POS and sync at least 3 days of sales — AI recommendations appear once there's enough data to analyze.
+            </p>
+            <Link
+              to="/integrations"
+              className="inline-flex items-center mt-2 px-4 py-2 bg-navy-700 text-white text-sm font-bold rounded-lg hover:bg-navy-800 transition-colors"
+            >
+              Connect Square
+            </Link>
+          </div>
+        )
       )}
 
       {/* Data */}
       {fetchState.status === 'data' && (
         <div className="space-y-5">
-          <ExecutiveSummary insights={fetchState.insights} />
-          {fetchState.meta && <ExplainabilityBar meta={fetchState.meta} />}
+          {tab === 'active' && <ExecutiveSummary insights={fetchState.insights} />}
+          {tab === 'active' && fetchState.meta && <ExplainabilityBar meta={fetchState.meta} />}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {fetchState.insights.map((insight, idx) => (
-              <InsightCard key={`${insight.category}-${idx}`} insight={insight} rank={idx + 1} />
+              <InsightCard
+                key={insight.id ?? `${insight.category}-${idx}`}
+                insight={insight}
+                rank={idx + 1}
+                tab={tab}
+                isNew={isNewInsight(insight)}
+                pending={actioningId === insight.id}
+                onSetStatus={(next) => { void setInsightStatus(insight, next); }}
+              />
             ))}
           </div>
         </div>
