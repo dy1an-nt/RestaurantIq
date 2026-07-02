@@ -70,35 +70,28 @@ router.post('/:id/read', async (req: Request, res: Response) => {
   const alertId = req.params.id;
 
   try {
-    // Fetch the alert first so we can verify tenant ownership before updating.
-    const { data: existing, error: fetchErr } = await supabase
-      .from('alerts')
-      .select('id, restaurant_id')
-      .eq('id', alertId)
-      .maybeSingle();
-
-    if (fetchErr) {
-      console.error('[alerts] POST /:id/read fetch failed:', fetchErr.message);
-      return res.status(500).json({ data: null, error: 'Failed to fetch alert' });
-    }
-
-    if (!existing) {
-      return res.status(404).json({ data: null, error: 'Alert not found' });
-    }
-
-    // Tenant guard: the alert must belong to the calling user's restaurant.
-    if ((existing as { id: string; restaurant_id: string }).restaurant_id !== req.restaurantId) {
-      return res.status(403).json({ data: null, error: 'Forbidden' });
-    }
-
-    const { error: updateErr } = await supabase
+    // Ownership is folded into the UPDATE itself — one statement, and 404 for
+    // both "doesn't exist" and "belongs to another tenant". The previous
+    // fetch-then-update shape returned 403 for foreign alerts and 404 for
+    // missing ones, telling an attacker which alert UUIDs exist (review L1).
+    const { data: updated, error: updateErr } = await supabase
       .from('alerts')
       .update({ is_read: true })
-      .eq('id', alertId);
+      .eq('id', alertId)
+      .eq('restaurant_id', req.restaurantId!)
+      .select('id')
+      .maybeSingle();
 
     if (updateErr) {
+      // 22P02 = invalid uuid syntax — a malformed :id is a 404, not a 500.
+      if ((updateErr as { code?: string }).code === '22P02') {
+        return res.status(404).json({ data: null, error: 'Alert not found' });
+      }
       console.error('[alerts] POST /:id/read update failed:', updateErr.message);
       return res.status(500).json({ data: null, error: 'Failed to update alert' });
+    }
+    if (!updated) {
+      return res.status(404).json({ data: null, error: 'Alert not found' });
     }
 
     return res.json({ data: { id: alertId }, error: null });

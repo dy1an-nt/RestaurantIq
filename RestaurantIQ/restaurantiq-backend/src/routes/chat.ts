@@ -182,13 +182,19 @@ router.patch(
 
 // DELETE /api/chat/conversations/:id
 router.delete('/conversations/:id', async (req: Request, res: Response) => {
-  const { error } = await supabase
+  // .select() makes the delete return the removed rows, so a wrong-tenant or
+  // nonexistent id is a 404 instead of a false-success 200 (zero rows matched
+  // is not an error to PostgREST).
+  const { data: deleted, error } = await supabase
     .from('chat_conversations')
     .delete()
     .eq('id', req.params.id)
-    .eq('restaurant_id', req.restaurantId!);
+    .eq('restaurant_id', req.restaurantId!)
+    .select('id');
 
-  if (error) return res.status(404).json({ data: null, error: 'Conversation not found' });
+  if (error || !deleted || deleted.length === 0) {
+    return res.status(404).json({ data: null, error: 'Conversation not found' });
+  }
 
   return res.json({ data: { deleted: true }, error: null });
 });
