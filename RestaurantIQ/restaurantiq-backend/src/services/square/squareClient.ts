@@ -27,10 +27,6 @@ export const getSquareClient = ({ accessToken }: SquareClientOptions = {}): Clie
   const envName = (process.env.SQUARE_ENVIRONMENT ?? 'sandbox').toLowerCase();
   const environment = envName === 'production' ? Environment.Production : Environment.Sandbox;
 
-  console.error(
-    `[square] using env=${environment} token=${token.slice(0, 12)}... len=${token.length}`,
-  );
-
   return new Client({
     accessToken: token,
     environment,

@@ -49,3 +49,7 @@ docs/weekly-summary/
 
 # --- Claude Code internal files ---
 .claude/
+
+# --- Engineering reviews (local-only, never commit) ---
+RestaurantIQ/ENGINEERING_REVIEW*.md
+RestaurantIQ/RestaurantIQ_Engineering_Review*.pdf

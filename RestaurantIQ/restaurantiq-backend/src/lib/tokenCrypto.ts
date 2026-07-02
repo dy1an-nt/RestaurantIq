@@ -108,25 +108,51 @@ export function decryptToken(encrypted: string): string {
 }
 
 /**
- * Lenient decrypt for ingestion paths: returns the value untouched if it isn't
- * in encrypted form, and swallows decrypt failures (returning the raw value) so
- * a single bad credential never crashes a sync.
+ * Distinct, loud failure for "the stored value looks encrypted but no configured
+ * key can decrypt it". This is an OPERATOR error (key rotation / env
+ * misconfiguration), not a customer auth problem — the message deliberately
+ * avoids the words syncScheduler's isAuthError matches (token/401/reconnect/…)
+ * so a key mismatch is recorded as `failed` with the true cause in last_error,
+ * never misdiagnosed as `token_expired` ("customer must reconnect").
+ */
+export class EncryptionKeyMismatchError extends Error {
+  constructor() {
+    super(
+      'Encryption key mismatch — stored credential cannot be decrypted with any ' +
+        'configured key. Check ACTIVE/LEGACY encryption key env vars.',
+    );
+    this.name = 'EncryptionKeyMismatchError';
+  }
+}
+
+/**
+ * Decrypt for ingestion paths: returns the value untouched if it isn't in
+ * encrypted form (legacy plaintext rows, logged so they surface), and THROWS
+ * EncryptionKeyMismatchError when a value that looks encrypted (contains ':')
+ * cannot be decrypted with any configured key.
  *
- * A swallowed failure means a value that *looked* encrypted (contained ':')
- * could not be decrypted with any configured key — usually a key rotation /
- * misconfiguration. We log a warning (never the value itself) so this surfaces
- * in logs instead of silently handing ciphertext to a provider as a "token".
+ * It used to pass the raw ciphertext through on failure, which sent ciphertext
+ * to the provider as a bearer credential; the resulting 401 was then classified
+ * as token_expired and surfaced as "customer needs to reconnect" — a wrong
+ * diagnosis for what is actually a key-rotation/config mistake. Failing loudly
+ * here is the fix (engineering review H2).
  */
 export function decryptTokenSafe(value: string): string {
-  if (!value.includes(':')) return value;
-  try {
-    return decryptToken(value);
-  } catch (err) {
+  if (value.length === 0) return value;
+  if (!value.includes(':')) {
     console.error(
-      '[tokenCrypto] decryptTokenSafe: value appears encrypted but no configured ' +
-        'key could decrypt it — passing through raw. Check token encryption keys. ' +
-        `(${(err as Error).message})`,
+      '[tokenCrypto] decryptTokenSafe: stored credential is not encrypted — ' +
+        'accepting as plaintext. Re-save it (e.g. via /connect) to encrypt at rest.',
     );
     return value;
+  }
+  try {
+    return decryptToken(value);
+  } catch {
+    console.error(
+      '[tokenCrypto] decryptTokenSafe: value appears encrypted but no configured ' +
+        'key could decrypt it. Check ACTIVE/LEGACY encryption key env vars.',
+    );
+    throw new EncryptionKeyMismatchError();
   }
 }

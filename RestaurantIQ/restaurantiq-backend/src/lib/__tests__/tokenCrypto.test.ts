@@ -4,6 +4,7 @@ import {
   decryptToken,
   decryptTokenWithMeta,
   decryptTokenSafe,
+  EncryptionKeyMismatchError,
 } from '../tokenCrypto';
 
 const KEY_V0 = randomBytes(32).toString('hex');
@@ -107,11 +108,19 @@ describe('tokenCrypto key rotation', () => {
       expect(decryptTokenSafe('plain-token')).toBe('plain-token');
     });
 
-    it('returns the raw value when decryption fails', () => {
+    it('throws EncryptionKeyMismatchError when decryption fails (never passes ciphertext through)', () => {
       setKeys(KEY_V1);
       const ciphertext = encryptToken('secret');
       setKeys(KEY_V2); // no legacy → cannot decrypt
-      expect(decryptTokenSafe(ciphertext)).toBe(ciphertext);
+      expect(() => decryptTokenSafe(ciphertext)).toThrow(EncryptionKeyMismatchError);
+      // The message must NOT match syncScheduler's isAuthError patterns — a key
+      // mismatch is an operator error and must be recorded as `failed`, never
+      // misdiagnosed as token_expired ("customer must reconnect").
+      expect(() => decryptTokenSafe(ciphertext)).toThrow(
+        expect.objectContaining({
+          message: expect.not.stringMatching(/disconnect|reconnect|re-auth|401|unauthor|token/i),
+        }),
+      );
     });
 
     it('decrypts a valid value', () => {

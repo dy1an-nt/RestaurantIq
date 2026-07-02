@@ -201,6 +201,12 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
     } while (orderCursor);
   } catch (err) {
     console.error('[square] searchOrders failed:', (err as Error).message);
+    // A failed orders pull must FAIL the sync — swallowing it here recorded a
+    // "success" with zero orders and silently stale data (review H4). The only
+    // path that may continue is the explicit payments-API fallback below.
+    if (process.env.PAYMENTS_FALLBACK !== 'true') {
+      throw new Error(`Square orders pull failed: ${(err as Error).message}`);
+    }
   }
 
   // Payments fallback for legacy Square accounts without Orders API access.
