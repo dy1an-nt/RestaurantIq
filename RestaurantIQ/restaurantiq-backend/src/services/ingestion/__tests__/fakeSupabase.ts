@@ -29,7 +29,7 @@
 type Row = Record<string, any>;
 
 interface Filter {
-  kind: 'eq' | 'in' | 'gte';
+  kind: 'eq' | 'in' | 'gte' | 'lt';
   col: string;
   val: any;
 }
@@ -46,6 +46,7 @@ const matches = (row: Row, filters: Filter[]): boolean =>
     if (f.kind === 'eq') return row[f.col] === f.val;
     if (f.kind === 'in') return (f.val as any[]).includes(row[f.col]);
     if (f.kind === 'gte') return row[f.col] >= f.val;
+    if (f.kind === 'lt') return row[f.col] < f.val;
     return true;
   });
 
@@ -106,6 +107,10 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
   }
   gte(col: string, val: any) {
     this.filters.push({ kind: 'gte', col, val });
+    return this;
+  }
+  lt(col: string, val: any) {
+    this.filters.push({ kind: 'lt', col, val });
     return this;
   }
   order(_col: string, _opts?: any) {

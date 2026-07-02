@@ -41,14 +41,22 @@ export interface Insight {
   action: string;
   /** Which product area to open to investigate this insight. */
   link: InsightLink;
+  /**
+   * Exact menu item this insight is about, copied verbatim from the data, or
+   * null when it concerns the whole business. Structured (not parsed from the
+   * title) because the persistence layer derives insight identity from it —
+   * see services/insightsService.ts computeDedupKey.
+   */
+  menu_item_name: string | null;
 }
 
 export interface InsightsResult {
   insights: Insight[];
 }
 
-// Ordering weight for sorting; lower sorts first.
-const PRIORITY_RANK: Record<InsightPriority, number> = { high: 0, medium: 1, low: 2 };
+// Ordering weight for sorting; lower sorts first. Exported so the persistence
+// layer (insightsService) ranks stored insights identically.
+export const PRIORITY_RANK: Record<InsightPriority, number> = { high: 0, medium: 1, low: 2 };
 
 // Runtime contract for one insight coming back from the model. tool_choice
 // forces the model to call report_insights, but the API does not guarantee the
@@ -72,6 +80,16 @@ const insightSchema = z.object({
   impact: z.string(),
   action: z.string().min(1),
   link: z.enum(['analytics', 'forecast', 'margins', 'menu', 'alerts']),
+  // Optional in the tool output (older prompts / model omission) but always
+  // present—possibly null—after validation, so downstream code never branches
+  // on undefined.
+  menu_item_name: z
+    .string()
+    .trim()
+    .min(1)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
 });
 
 const INSIGHTS_TOOL: Anthropic.Tool = {
@@ -136,8 +154,15 @@ const INSIGHTS_TOOL: Anthropic.Tool = {
                 'Where to investigate: "analytics" for trends/peak-hours, "margins" for pricing/cost, ' +
                 '"forecast" for demand/staffing, "menu" for item performance, "alerts" for anomalies.',
             },
+            menu_item_name: {
+              type: ['string', 'null'],
+              description:
+                'If this insight is about ONE specific menu item, its name copied EXACTLY as it ' +
+                'appears in the data (menu_item_name field). Otherwise null (whole-business or ' +
+                'multi-item insights). Never invent or paraphrase a name.',
+            },
           },
-          required: ['category', 'priority', 'title', 'explanation', 'metric', 'impact', 'action', 'link'],
+          required: ['category', 'priority', 'title', 'explanation', 'metric', 'impact', 'action', 'link', 'menu_item_name'],
         },
       },
     },
@@ -204,7 +229,9 @@ for pricing and cost questions, "forecast" for demand and staffing, "menu" for i
 
 You must call the report_insights tool with your findings. Do not output any text outside the tool call.`;
 
-const FALLBACK: InsightsResult = {
+// Exported so the read path (routes/insights.ts) can synthesize this for
+// restaurants with <3 days of data instead of persisting placeholder rows.
+export const FALLBACK: InsightsResult = {
   insights: [
     {
       category: 'menu_performance',
@@ -216,6 +243,7 @@ const FALLBACK: InsightsResult = {
       impact: 'Insights unlock once a few days of sales are recorded.',
       action: 'Keep your POS synced for a few more days, then refresh.',
       link: 'menu',
+      menu_item_name: null,
     },
   ],
 };

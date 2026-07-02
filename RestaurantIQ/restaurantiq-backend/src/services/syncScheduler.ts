@@ -34,6 +34,7 @@ import {
   markSkipped,
   JobTrigger,
 } from './scheduler/syncJobs';
+import { runInsightsGeneration } from './insightsService';
 import { nextRetryDelayMs } from './scheduler/retry';
 
 export type Provider = OrderSource; // 'square' | 'doordash'
@@ -366,6 +367,11 @@ export const syncIntegration = async (
       orderCount: result.orderCount,
       jobId,
     });
+    // Regenerate persisted AI insights AFTER the lock is released, outside the
+    // sync timeout budget, fire-and-forget (Sprint U). Its internal frequency
+    // guard (default 6 h) keeps 15-minute sync cadence from meaning 15-minute
+    // Claude spend.
+    runInsightsGeneration(restaurantId);
     return {
       restaurantId,
       provider,
