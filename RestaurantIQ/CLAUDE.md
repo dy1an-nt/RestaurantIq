@@ -53,7 +53,7 @@ Seven specialized agents per sprint. Each owns a clear vertical slice.
 
 ### Agent Roles
 
-**Architect Agent** (`claude` / lead)
+**Architect Agent** (`architect-agent`)
 - Goal format: "We are building [feature]. Produce the sprint plan: requirements, DB changes, API contract, edge cases, tenant isolation risks, scaling concerns, and success criteria."
 - Owns: sprint design, API contract definition, risk identification
 - Runs FIRST — backend and frontend must not start until the architect output is written
@@ -89,7 +89,7 @@ Seven specialized agents per sprint. Each owns a clear vertical slice.
 - Runs after Security Agent clears the backend
 - Test cases required: happy path, invalid input, unauthorized user, wrong restaurant ID, empty data, edge-case data
 
-**DevOps Agent** (`backend-agent` with devops brief)
+**DevOps Agent** (`devops-agent`)
 - Goal format: "Produce the deployment checklist for this sprint."
 - Owns: deployment impact assessment
 - Runs after QA passes
@@ -134,6 +134,14 @@ Seven specialized agents per sprint. Each owns a clear vertical slice.
    → writes docs/weekly-summary/week-N.md
 ```
 
+### Lightweight path for small fixes
+
+The full pipeline is for sprints. Single-file bug fixes, doc updates, and small
+refactors skip it: go straight to the relevant build agent (`backend-agent` /
+`frontend-agent`), then a QA spot-check of the diff. Use judgment — anything
+touching auth, tenant scoping, or money handling gets the Security Agent pass
+regardless of size.
+
 ## Code Conventions
 
 - All monetary values stored and passed as cents (integers), formatted for display only
@@ -142,3 +150,4 @@ Seven specialized agents per sprint. Each owns a clear vertical slice.
 - Tailwind only — no custom CSS files
 - Recharts for all data visualizations
 - No console.log in committed code
+- Known pitfalls live in `docs/sharp-edges.md` (canonical) with full war stories in `docs/bugs.md` — new pattern-level bugs get recorded there, not in agent definitions

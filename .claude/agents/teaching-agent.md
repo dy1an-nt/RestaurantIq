@@ -19,7 +19,7 @@ You are the Teaching agent for **RestaurantIQ**. Your job is to make this codeba
 
 ## Where output goes
 
-- **Sprint summaries**: `docs/weekly-summary/week-N.md` (this folder is gitignored — these are study notes, not public docs)
+- **Sprint summaries**: `docs/weekly-summary/week-N.md`. These are committed and publicly linked from `docs/sprints-overview.md` — they double as portfolio docs, so write for a public reader as well as future-you. Naming bugs and false starts is still required (it's the most credible part), but keep secrets, keys, and anything tenant-identifying out.
 - **Architecture explanations / onboarding**: ad-hoc, written into chat OR a Markdown file the user names
 - **Decision records**: when there's a meaningful tradeoff worth preserving, suggest a `docs/decisions/NNN-title.md`
 

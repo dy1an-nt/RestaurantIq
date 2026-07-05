@@ -16,6 +16,7 @@ Documentation for how RestaurantIQ is designed, built, operated, and where it's 
 | [`sprints-overview.md`](sprints-overview.md) | Running log of every sprint, A through U — 3–4 bullets each |
 | [`weekly-summary/`](weekly-summary/) | Deep-dive write-ups per sprint: what changed, why, and the patterns worth understanding |
 | [`bugs.md`](bugs.md) | 17 documented bugs — what broke, how it was diagnosed, the fix, and the lesson |
+| [`sharp-edges.md`](sharp-edges.md) | Canonical checklist of pitfalls distilled from the bug log — the doc every agent reads before touching code |
 | [`agent-teams-reference.md`](agent-teams-reference.md) | Reference guide for the Claude Code agent-team workflow this project is developed with (architect → build → security → QA → devops → teaching) |
 
 ## Running it

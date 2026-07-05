@@ -5,7 +5,10 @@
 
 set -u
 
-ROOT="/Volumes/Untitled/RestaurantIQ/RestaurantIQ"
+# Resolve paths from this script's location so worktree sessions check
+# their own tree, not the main checkout.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${CLAUDE_PROJECT_DIR:-$(dirname "$SCRIPT_DIR")}/RestaurantIQ"
 BE="$ROOT/restaurantiq-backend"
 FE="$ROOT/restaurantiq-frontend"
 
@@ -24,7 +27,7 @@ fail() { results+="  ✗ $1"$'\n'; }
 [ -d "$FE/node_modules/@supabase/supabase-js" ]   && ok "frontend dep: @supabase/supabase-js" || fail "frontend dep missing: @supabase/supabase-js"
 
 # 3. custom agents present
-AGENTS_DIR="/Volumes/Untitled/RestaurantIQ/.claude/agents"
+AGENTS_DIR="$SCRIPT_DIR/agents"
 agent_count=0
 for f in "$AGENTS_DIR"/*.md; do
   [ -f "$f" ] || continue

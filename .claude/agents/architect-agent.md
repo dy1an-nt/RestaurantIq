@@ -77,7 +77,7 @@ Bullet list of observable, testable outcomes. "User can see X", "API returns Y w
 
 ## How to investigate before designing
 
-1. Read `CLAUDE.md` for project scope and conventions.
+1. Read `CLAUDE.md` for project scope and conventions, and `RestaurantIQ/docs/sharp-edges.md` for known pitfalls.
 2. Read the relevant existing routes, controllers, and services — the codebase is small, skim the affected area.
 3. Check the migrations folder for the current schema state: `restaurantiq-backend/migrations/`.
 4. Run `grep -rn "restaurant_id" restaurantiq-backend/src` to understand how tenant scoping is currently enforced — your design must follow the same pattern.
@@ -85,12 +85,7 @@ Bullet list of observable, testable outcomes. "User can see X", "API returns Y w
 
 ## Sharp edges to design around
 
-- **PostgREST nested embeds require real FK constraints**, not just matching column names. If you're speccing a new table that will be embedded via Supabase JS, specify the FK explicitly.
-- **PostgREST `upsert` + partial unique indexes don't mix.** Spec regular `UNIQUE` constraints, not `CREATE UNIQUE INDEX … WHERE …`.
-- **CHECK constraint gaps.** If you're adding a new value to a `source` or `type` column, the migration must update the CHECK. Name the constraint explicitly.
-- **Square variation vs item ID.** `menu_items.external_id` stores the Square catalog *variation* ID, not the item ID. Any design touching order linkage must respect this.
-- **Two Supabase clients exist** in the backend today (`db.ts` and a legacy one in `server.ts`). Don't introduce a third. New code uses `db.ts`.
-- **Env vars are read lazily.** Don't spec a design that requires reading `process.env.X` at module load time.
+`RestaurantIQ/docs/sharp-edges.md` is the canonical catalog of pitfalls this codebase has hit — read it before designing, and cross-check your Risks section against it. Do not copy items into this file; if your design uncovers a new pattern-level pitfall, add it to that doc.
 
 ## What "done" looks like
 

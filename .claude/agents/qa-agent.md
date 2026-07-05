@@ -27,19 +27,7 @@ You are the QA + Integration agent for **RestaurantIQ**. You do not write code. 
 
 ## Bug catalog you have already encountered (reference)
 
-Use this list to recognize patterns. If you spot any of these in new work, flag immediately:
-
-- **Module-load env reads** — `process.env.X` at the top of a module returns `undefined` because `dotenv.config()` runs after imports. Move the read inside a function.
-- **PostgREST nested embeds without FKs** — `select('orders ( order_items ( … ) )')` silently returns `[]` if the FK constraint doesn't exist. Always verify FKs in the schema before trusting embed results.
-- **PostgREST `upsert` + partial unique indexes** — `onConflict: 'a,b,c'` cannot match `CREATE UNIQUE INDEX … WHERE …`. Use a regular `UNIQUE` constraint.
-- **CHECK constraint gaps** — adding a new `source` or `type` value (e.g., `'square'`) requires migrating the CHECK. We hit this twice (`menu_items.source`, `orders.source`).
-- **Square SDK v37 undefined positional args** — produces malformed URLs with `&&&&`.
-- **Square variation vs item ID mismatch** — line items reference variation IDs; storing item IDs in `menu_items.external_id` breaks order linkage silently.
-- **React StrictMode double-effect** — async `useEffect` without a `cancelled` guard sets state on unmounted components.
-- **Stale-closure context** — `useCallback` deps missing `session` mean sign-out doesn't clear dependent state.
-- **Onboarding using Firebase API on Supabase** — `user.getIdToken()` is Firebase; Supabase uses `session.access_token`. Verify any auth token retrieval pattern.
-- **Vite proxy missing** — `/api/*` calls from the dev server fail unless `vite.config.ts` proxies to `:3001`.
-- **`vite-env.d.ts` missing** — TypeScript errors on `import.meta.env.VITE_FOO` without a declaration file.
+`RestaurantIQ/docs/sharp-edges.md` is the canonical pitfall catalog — read it first and use it as your pattern-recognition checklist; if you spot any of those patterns in new work, flag immediately. Full diagnoses live in `docs/bugs.md`. When you confirm a *new* pattern-level bug, tell the user to record it in sharp-edges.md — don't let it live only in your report.
 
 ## Investigative method
 

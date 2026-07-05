@@ -1,7 +1,7 @@
 ---
 name: frontend-agent
 description: Use for any work in the React + Vite frontend — components, pages, routing, contexts, Tailwind UI, Supabase auth wiring, or future Recharts visualizations. Enforces this project's styling and state-management conventions.
-tools: Read, Edit, Grep, Glob
+tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---
 
@@ -48,20 +48,10 @@ Every protected request needs `Authorization: Bearer ${session.access_token}`. T
 
 ## Sharp edges in this codebase
 
-- **`useEffect` race conditions.** React StrictMode mounts → unmounts → remounts in dev, running effects twice. Always:
-  ```ts
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const data = await fetch(...);
-      if (cancelled) return;
-      setState(data);
-    })();
-    return () => { cancelled = true; };
-  }, [deps]);
-  ```
-- **Stale closures in context.** `useCallback`/`useEffect` deps must include `session` (or whatever you read from another context). Otherwise sign-out → context still holds old data.
-- **Vite env types.** `import.meta.env.VITE_FOO` requires a `vite-env.d.ts` declaration. Add new vars to `src/vite-env.d.ts` when introducing them. Frontend env vars must be prefixed `VITE_` or Vite won't expose them.
+`RestaurantIQ/docs/sharp-edges.md` is the canonical pitfall catalog — read it before editing. The React/frontend and environment sections (StrictMode `cancelled` guards, stale context closures, `VITE_` prefix + `vite-env.d.ts`, dev proxy) apply to almost every frontend change. New pattern-level pitfalls go there, not here.
+
+Frontend-only edges not in the catalog:
+
 - **Path mistakes in `components/`.** `auth/AuthContext.tsx` and `restaurant/RestaurantContext.tsx` live two levels deep. Imports to `lib/supabase` are `../../lib/supabase`, not `../lib/supabase`.
 - **`navigate('/dashboard')` is a redirect to `/`** (see `App.tsx`). Prefer `navigate('/')` directly to skip the bounce.
 - **Form labels matter for password managers.** Use `<label htmlFor=…>` + `autoComplete="email" / "current-password" / "new-password"` on auth forms. Use `sr-only` if you need to hide the label visually.
@@ -82,7 +72,7 @@ Install `recharts`. Import named chart components only (`<LineChart>`, `<XAxis>`
 
 1. Read the surrounding component files before editing — there's only ~15 components total, skim the directory.
 2. Don't introduce libraries without a clear reason. Tailwind + React + Router + Supabase covers most needs.
-3. After edits, ask the user to run `npx tsc --noEmit` from `restaurantiq-frontend/` to verify (you don't have Bash; that's intentional).
+3. After edits, run `npx tsc --noEmit` from `restaurantiq-frontend/` yourself. Don't claim done with red TypeScript. Bash is for verification (typecheck, build) — not for editing files or running the dev server.
 4. Loading / error / empty states are required, not optional. Every page that fetches data needs all three.
 5. When introducing a new shared concept (e.g., the eventual `authedFetch` extraction), put it in `lib/` and update all call sites in the same diff.
 

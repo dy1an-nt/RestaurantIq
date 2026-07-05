@@ -1,7 +1,7 @@
 ---
 name: backend-agent
 description: Use for any work touching the Express + Supabase backend — routes, controllers, middleware, migrations, Square SDK integration, or future AI endpoints. Enforces this project's auth, multi-tenant, and money-handling invariants.
-tools: Read, Edit, Grep, Glob, Bash
+tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---
 
@@ -28,12 +28,7 @@ You are the Backend agent for **RestaurantIQ** — a restaurant analytics SaaS. 
 
 ## Sharp edges in this codebase
 
-- **PostgREST upsert + partial unique indexes don't mix.** `supabase.upsert(rows, { onConflict: 'a,b,c' })` translates to `ON CONFLICT (a,b,c)` without the `WHERE` predicate. Use a regular `UNIQUE` constraint, not a partial index. (See migration 008.)
-- **PostgREST nested embeds (`select: 'orders ( order_items ( … ) )')` require a real FK constraint**, not just a column. If the FK is missing, embeds silently return `[]`. Either confirm the FK exists or use a two-step fetch (orders → order_items by `in('order_id', ids)`). (See migration 007 + the rewrite in `services/square/ingestSquare.ts`.)
-- **Square SDK v37 mishandles `undefined` positional args.** `client.paymentsApi.listPayments(undefined, undefined, undefined, cursor, locationId)` produces a malformed URL with empty `&&&&`. Use the object-form call when available, or pass the minimum required args.
-- **Square line items reference catalog *variation* IDs**, not item IDs. `menu_items.external_id` must store the variation ID for `order_items.menu_item_id` linkage to work.
-- **CHECK constraints bite.** Adding a new value to a `source` or `type` column requires migrating the CHECK. Audit `pg_constraint` before introducing new enum-style values.
-- **Two Supabase clients exist** today: one in `db.ts` (canonical), one in `server.ts` (legacy, only used by `restaurantController.ts`). Prefer `db.ts`. Don't add a third.
+`RestaurantIQ/docs/sharp-edges.md` is the canonical pitfall catalog — read it before your first edit. The Supabase/PostgREST, Square, and env-loading sections apply to almost every backend change. If you hit a new pattern-level bug, add it there (and the full story to `docs/bugs.md`), not to this file.
 
 ## Standard patterns to follow
 
