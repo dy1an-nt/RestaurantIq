@@ -10,17 +10,24 @@ import {
   ChannelMarginError,
 } from '../services/channelMarginService';
 
-// PostgREST returns embedded many-to-one relations as arrays even for single
-// FK relationships. Typing as an array and unwrapping with [0] is required.
+// PostgREST returns a many-to-one embed as an object; older client versions
+// returned an array. Accept both shapes and unwrap with unwrapEmbed().
 // menu_item_id is nullable — ON DELETE SET NULL means deleted items leave null rows.
+interface EmbeddedMenuItem {
+  name: string;
+  category: string;
+}
 interface DailySummaryRow {
   menu_item_id: string | null;
   date: string;
   total_quantity: number;
   total_revenue_cents: number;
   total_orders: number;
-  menu_items: { name: string; category: string }[] | null;
+  menu_items: EmbeddedMenuItem | EmbeddedMenuItem[] | null;
 }
+
+const unwrapEmbed = (embed: EmbeddedMenuItem | EmbeddedMenuItem[] | null): EmbeddedMenuItem | undefined =>
+  Array.isArray(embed) ? embed[0] : embed ?? undefined;
 
 interface OrderRow {
   ordered_at: string;
@@ -112,8 +119,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     // Skip orphaned rows left behind by ON DELETE SET NULL on menu_items FK.
     if (row.menu_item_id === null) continue;
     const existing = itemMap.get(row.menu_item_id);
-    // Unwrap PostgREST array embed — use first element, fall back to blanks.
-    const menuItem = row.menu_items?.[0];
+    const menuItem = unwrapEmbed(row.menu_items);
     if (existing) {
       existing.revenue_cents += row.total_revenue_cents;
       existing.orders += row.total_orders;

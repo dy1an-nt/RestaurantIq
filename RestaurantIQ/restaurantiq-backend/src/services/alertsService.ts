@@ -31,8 +31,9 @@ interface DailySummaryRow {
   date: string;
   total_quantity: number;
   total_revenue_cents: number;
-  // PostgREST returns embedded relations as arrays even for many-to-one FKs.
-  menu_items: { name: string }[] | null;
+  // PostgREST returns a many-to-one embed as an object; older client
+  // versions returned an array. Accept both shapes.
+  menu_items: { name: string } | { name: string }[] | null;
 }
 
 interface RecentAlertRow {
@@ -94,7 +95,8 @@ const fetchItemStats = async (restaurantId: string): Promise<ItemStats[]> => {
 
   for (const row of (rows ?? []) as unknown as DailySummaryRow[]) {
     const itemId = row.menu_item_id;
-    const name = row.menu_items?.[0]?.name ?? itemId;
+    const embedded = row.menu_items;
+    const name = (Array.isArray(embedded) ? embedded[0]?.name : embedded?.name) ?? itemId;
     const date = row.date;
 
     if (!statsMap.has(itemId)) {
