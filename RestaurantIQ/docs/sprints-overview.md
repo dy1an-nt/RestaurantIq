@@ -105,8 +105,25 @@ A running log of every sprint shipped, oldest to newest. Each entry is a quick 3
 - Treats `cost_cents === 0` (DoorDash's default) the same as null = "cost unknown," excluding those items rather than showing fake 100% margins; tenant safety via two-hop scoping (orders first, then `order_items` by chunked `.in()`) since `order_items` has no `restaurant_id`.
 - Hardened the settings PATCH with strict integer/bounds validation and unknown-field rejection (mass-assignment protection); fixed a React refetch-cleanup leak (refetchKey counter) and a Recharts axis that clipped negative margins.
 
+## Sprint R — Reliability & Release
+- No new product features: turned the codebase into a trustworthy system by restoring green quality gates and adding a CI pipeline that enforces them (tests + lint + typecheck on every push).
+- Fixed the time-bomb test failures by injecting the clock into `refreshDailySummaries` (`now` parameter, real clock by default) so the suite no longer rots as the calendar moves past seeded dates.
+- Standardized input validation with zod at the API boundary and consolidated tenant scoping behind `requireRestaurant`, backed by a lint rule and audit.
+- Added stale-data indicators ("Last synced" + warning) and an honest revenue-methodology label instead of silently mismatching Square's gross totals. See `weekly-summary/week-R.md` and `weekly-summary/sprints-R-S-deep-dive.md`.
+
+## Sprint S — Pilot Readiness
+- Consolidated the owner-facing nav: merged Margins and Channel Margins into one page with tabs, moved the engineer-facing Sync Health dashboard behind a Settings → Developer toggle.
+- Completed empty states and self-explaining numbers (per-metric tooltips) so a non-technical owner can read every screen without a walkthrough.
+- Wrote `docs/known-limitations.md` — the honest gap list shown to pilot candidates — and `docs/pilot-checklist.md` for onboarding a 2–3 restaurant pilot. See `weekly-summary/week-S.md`.
+
 ## Sprint T — Intelligence & Actionability
 - Redesigned the AI insight contract so each recommendation carries a typed `priority` (high/medium/low), one-sentence explanation, supporting numbers, expected business impact, recommended action, and a deep-link target — assigned by the model and re-sorted most-important-first server-side; list trimmed from 5–8 to 3–6.
 - Replaced the frontend's brittle keyword-regex priority guesser with the AI's priority, rebuilt the insight cards around the five owner-facing fields, and added a one-click "investigate" link per card mapping to Analytics / Forecast / Margins / Menu / Alerts.
 - Added an explainability bar (period, days of data, orders, items, data-volume-derived confidence, generated-at) so the AI feels transparent, and a dashboard "Needs attention today" strip sourced from the cheap real-time alerts feed (not the billed AI endpoint) to answer what-to-do-next without burning quota.
 - Decluttered the dashboard: urgency-ordered sections (attention → KPIs → detail) and removed the duplicate revenue-methodology note (kept only in the KPI tooltip). See `weekly-summary/week-T.md`.
+
+## Sprint U — Persistent AI Insights
+- Insights now persist: migration 026 adds an `insights` table (dedup key, priority, status, generated-at) so `GET /api/insights` is a cheap table read instead of a paid Claude call per page view; generation runs as a post-sync hook, mirroring the alerts-engine pattern.
+- `POST /api/insights/refresh` is the only path that spends tokens; stale rows expire, and dedup keys prevent the same recommendation stacking up across generations.
+- Phase 2 UI shipped the insight workflow: owners mark recommendations completed or dismissed, with a "new since last visit" marker — the first real signal of whether users act on what the AI suggests.
+- Landed the repo's first HTTP/supertest route suite alongside service unit tests, and closed three review HIGHs as a pre-sprint gate (token log redaction, decrypt errors now throw instead of passing through, failed order pulls now fail the sync).

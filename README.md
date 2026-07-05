@@ -7,6 +7,21 @@
 
 Live on Railway (backend) + Vercel (frontend).
 
+![RestaurantIQ dashboard — menu performance, KPIs, and the "needs attention today" strip](RestaurantIQ/docs/screenshots/dashboard.png)
+
+---
+
+## Why this exists
+
+I've worked in food service, and a lot of that time was spent staring at the POS. The register sees everything — every order, every item, every rush and every dead hour — but the analytics stop at a sales report. That gap kept bothering me:
+
+- **POS menu analytics are shallow.** Square (like most POS reporting) ranks items by sales. It won't tell you which "top seller" actually loses money once ingredient cost is factored in, or which item is quietly trending down 20% week over week.
+- **Delivery data lives in a silo.** DoorDash orders sit in DoorDash's dashboard with their own fees and their own math. Nobody merges the channels, so nobody sees a dish's real margin after the delivery commission comes out.
+- **Reports describe; they don't advise.** Even when the numbers exist, the owner is left to interpret them between rushes. Nothing says *reprice this, promote this, cut this — and here's the math behind it.*
+- **The tools that do this are built for chains.** Enterprise restaurant-intelligence platforms target multi-location groups with analyst teams. The independent single-location restaurant — most of the industry — gets a spreadsheet.
+
+RestaurantIQ is my attempt to close that gap: one place where POS and delivery orders merge into a single data layer, per-dish margins are computed honestly (no fake 100% margins on uncosted items), and an AI layer turns the numbers into a short, prioritized list of things worth doing this week.
+
 ---
 
 ## What it does
@@ -22,6 +37,17 @@ A restaurant owner connects their Square POS and DoorDash account once. From tha
 - **Marketing copy** — AI-generated social captions and promo ideas driven by actual item performance
 - **Sync Health dashboard** — live view of the distributed sync scheduler: leader identity, per-provider success rates, recent job history, retry queue depth
 
+### Screenshots
+
+| | |
+|---|---|
+| ![Analytics — revenue trend, top items by revenue, busiest-hours heatmap](RestaurantIQ/docs/screenshots/analytics.png) | ![AI Insights — prioritized recommendation cards with supporting numbers](RestaurantIQ/docs/screenshots/ai-assistant.png) |
+| *Analytics: revenue trend, top items, busiest hours* | *AI Insights: prioritized actions with supporting numbers* |
+| ![Margins — profitability by item, top profit contributors](RestaurantIQ/docs/screenshots/margins.png) | ![Demand Forecast — 7-day per-item projections with confidence tiers](RestaurantIQ/docs/screenshots/advisor.png) |
+| *Margins: true profit per dish once costs are entered* | *Demand Forecast: deterministic projections, tiered confidence* |
+| ![Alerts — deterministic menu-performance notifications](RestaurantIQ/docs/screenshots/alerts.png) | |
+| *Alerts: trending-down and zero-sales rules, no AI required* | |
+
 ---
 
 ## Tech stack
@@ -30,12 +56,12 @@ A restaurant owner connects their Square POS and DoorDash account once. From tha
 |---|---|
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
 | Backend | Node.js, Express, TypeScript |
-| Database | PostgreSQL via Supabase (25 migrations) |
+| Database | PostgreSQL via Supabase (26 migrations) |
 | Auth | Supabase Auth + custom JWT middleware (JWKS) |
 | AI | Anthropic Claude API (forced tool use, prompt caching) |
 | Integrations | Square Node SDK, DoorDash OAuth2 API |
 | Hosting | Railway (backend) + Vercel (frontend) |
-| Testing | Jest — 15 suites, 167 tests (CI-gated) |
+| Testing | Jest — 18 suites, 279 tests (CI-gated) |
 
 ```mermaid
 graph LR
@@ -51,7 +77,7 @@ graph LR
     end
 
     subgraph Supabase["Supabase"]
-        Postgres[("PostgreSQL\n25 migrations")]
+        Postgres[("PostgreSQL\n26 migrations")]
         Auth["Auth / JWKS"]
     end
 
@@ -141,7 +167,7 @@ Every protected route validates a JWT against Supabase's JWKS endpoint. Every da
 
 ### Schema evolution
 
-25 forward-only SQL migrations in `restaurantiq-backend/migrations/`. A custom migration runner (`src/scripts/migrate.ts`) applies them in order and records each in a `schema_migrations` table. No ORM: the schema is hand-written SQL — every index and constraint explicit — while application queries use Supabase's PostgREST query builder (raw `pg` is reserved for the migration runner and the advisory-lock scheduler).
+26 forward-only SQL migrations in `restaurantiq-backend/migrations/`. A custom migration runner (`src/scripts/migrate.ts`) applies them in order and records each in a `schema_migrations` table. No ORM: the schema is hand-written SQL — every index and constraint explicit — while application queries use Supabase's PostgREST query builder (raw `pg` is reserved for the migration runner and the advisory-lock scheduler).
 
 ---
 
@@ -160,7 +186,7 @@ RestaurantIQ/
 │   │   │   └── ingestion/    # shared persistence layer (upsert pipeline)
 │   │   ├── lib/              # token encryption
 │   │   └── config/           # env validation, CORS
-│   └── migrations/           # 23 SQL migrations
+│   └── migrations/           # 26 SQL migrations
 └── restaurantiq-frontend/
     ├── src/
     │   ├── pages/            # Dashboard, Analytics, Margins, AI Assistant, Advisor, …
@@ -182,13 +208,13 @@ RestaurantIQ/
 
 **CQRS in miniature on the advisor.** `GET /forecast` never recomputes — it's a cache read. `POST /forecast/refresh` is the only path that runs Claude, and it's rate-limited. Page-load cost and a 12-second wait during navigation are different failure modes; the button label "Generating…" is a feature.
 
-**No ORM.** The schema is hand-written SQL — every index and constraint explicit — and application queries go through Supabase's PostgREST query builder rather than an ORM's entity graph (raw `pg` is reserved for the migration runner and the advisory-lock scheduler). The 25-migration history is the schema's changelog.
+**No ORM.** The schema is hand-written SQL — every index and constraint explicit — and application queries go through Supabase's PostgREST query builder rather than an ORM's entity graph (raw `pg` is reserved for the migration runner and the advisory-lock scheduler). The 26-migration history is the schema's changelog.
 
 ---
 
 ## Database schema
 
-23 forward-only SQL migrations. Three Mermaid ER diagrams (core data, sync infrastructure, AI features) plus the design thought process — why multi-tenancy lives in a column, why daily summaries exist alongside raw orders, how the two-table sync architecture works, and why every token is stored as integer cents.
+26 forward-only SQL migrations. Three Mermaid ER diagrams (core data, sync infrastructure, AI features) plus the design thought process — why multi-tenancy lives in a column, why daily summaries exist alongside raw orders, how the two-table sync architecture works, and why every token is stored as integer cents.
 
 See [`docs/schema.md`](RestaurantIQ/docs/schema.md).
 
@@ -196,7 +222,7 @@ See [`docs/schema.md`](RestaurantIQ/docs/schema.md).
 
 ## Bug log
 
-16 documented bugs across the project — what broke, how it was diagnosed, what fixed it, and what the pattern tells you. Categories: React render timing, optimistic UI races, PostgREST quirks, Node module load order, distributed systems, deployment config, and schema edge cases.
+17 documented bugs across the project — what broke, how it was diagnosed, what fixed it, and what the pattern tells you. Categories: React render timing, optimistic UI races, PostgREST quirks, Node module load order, distributed systems, deployment config, and schema edge cases.
 
 See [`docs/bugs.md`](RestaurantIQ/docs/bugs.md).
 
@@ -204,7 +230,7 @@ See [`docs/bugs.md`](RestaurantIQ/docs/bugs.md).
 
 ## Sprint history
 
-Built over 16 sprints. See [`docs/sprints-overview.md`](RestaurantIQ/docs/sprints-overview.md) for the full log.
+Built across 20+ sprints. See [`docs/sprints-overview.md`](RestaurantIQ/docs/sprints-overview.md) for the full log.
 
 | Sprints | What shipped |
 |---|---|
@@ -217,6 +243,8 @@ Built over 16 sprints. See [`docs/sprints-overview.md`](RestaurantIQ/docs/sprint
 | M–N | Deployment config, CORS, rate limiting, security headers, health endpoint, runbooks |
 | O | Brand design system (Tailwind theme, SVG icons, landing page, auth shell) |
 | P | AI Chat, Purchasing Advisor, password reset, first production deploy (Railway + Vercel) |
+| Q–S | Cross-channel delivery-tax margins (what the owner keeps after DoorDash fees), revenue-labeling trust fixes, pilot-readiness hardening |
+| T–U | Redesigned AI insight contract (typed priorities, expected impact, deep links per card), persistent insights with a review workflow, tenant-isolation test sweep across the route surface |
 
 ---
 
@@ -248,11 +276,15 @@ npm run dev                   # http://localhost:5173
 **Running tests:**
 ```bash
 cd restaurantiq-backend
-npm test              # 15 suites, 167 tests
+npm test              # 18 suites, 279 tests
 ```
 
 ---
 
-## What to keep in mind
+## Status & where this is going
 
-RestaurantIQ is a portfolio project and personal learning vehicle — it is not open for sign-ups and has no production data beyond the developer's own test restaurant. The `docs/` folder has the deployment runbook, migration guide, and operations notes if you want to understand how it's wired together.
+RestaurantIQ is live (Railway + Vercel) and built solo, end to end — schema, backend, frontend, AI integration, deployment, and docs. It is not open for public sign-ups yet: the near-term goal is pilots with real restaurants, and the work toward that is tracked openly in [`docs/known-limitations.md`](RestaurantIQ/docs/known-limitations.md) (the honest gap list shown to pilot candidates) and [`docs/pilot-checklist.md`](RestaurantIQ/docs/pilot-checklist.md).
+
+If a restaurant wants to see this on its own numbers or wants to talk about a pilot — reach out or open an issue.
+
+This repo also doubles as my engineering portfolio, so it's written to show *how* it was built, not just what: the [sprint log](RestaurantIQ/docs/sprints-overview.md), the [bug log](RestaurantIQ/docs/bugs.md) (17 documented failures and what each one taught), the [schema design notes](RestaurantIQ/docs/schema.md), and the deployment and operations runbooks are all part of the product.

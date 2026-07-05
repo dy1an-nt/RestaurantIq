@@ -197,3 +197,15 @@ A running record of every notable bug found during development: what broke, how 
 **Fix.** Added a `cost_known` guard: items where `cost_cents IS NULL` are excluded from margin calculations and rendered with a "Missing cost" badge instead. `null` cost and `$0` cost are treated as distinct states throughout.
 
 **Lesson.** `null` means "unknown," not `0`. Never coerce nulls to numeric zero in financial calculations — the failure mode is confidently wrong numbers, which is worse than showing nothing.
+
+---
+
+### 17. PostgREST embed shape, part two — the documented workaround became the bug
+
+**Symptom.** Every alert title showed a raw UUID instead of the dish name ("`ca8b9cc4-…` revenue down 33% this week"), and the Analytics "Top Items by Revenue" list rendered dollar amounts with blank labels. No errors anywhere — both surfaces degraded silently. Found while capturing README screenshots; a React duplicate-key warning (`key={r.name}` with every name `""`) was the only signal.
+
+**Diagnosis.** Bug #4 established the lesson "PostgREST always returns embeds as arrays" — and that lesson, encoded in a code comment, was copied into `alertsService.ts` and `analytics.ts` along with the `row.menu_items?.[0]?.name` unwrap. But with the current Supabase client, a many-to-one embed (`daily_summaries → menu_items` via FK) comes back as an **object**, not a one-element array. Array-indexing an object returns `undefined`, and both call sites had a silent fallback (`?? itemId`, `?? ''`) that swallowed the failure. Meanwhile `chatDataContextBuilder.ts` — written later — already handled both shapes, which is why AI Chat showed correct names while Alerts showed UUIDs.
+
+**Fix.** Both sites now accept either shape: `Array.isArray(embed) ? embed[0] : embed`, with the TypeScript type widened to `T | T[] | null` and the misleading comments corrected.
+
+**Lesson.** Two, really. First: a "lesson learned" written into a comment is code too — it propagates by copy-paste and goes stale just as silently. The embed shape depends on how the client detects FK cardinality, so the only safe read is one that tolerates both. Second: `?? fallback` on a data-mapping path hides structural failures; the UUID titles shipped because the fallback made the failure look like data instead of a bug. Fail loudly (or log) when a join you asked for comes back unreadable.
