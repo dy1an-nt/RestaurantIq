@@ -21,6 +21,66 @@ Restaurant analytics and marketing SaaS. Syncs with POS systems (Square) and del
 | AI | Anthropic Claude API |
 | Hosting | Vercel (frontend) + Railway (backend) |
 
+## Operating Discipline
+
+These rules encode how the strongest sessions on this project worked, written down
+as procedure so quality does not depend on which model runs the session. They bind
+the **main session** as much as any subagent. Follow them mechanically — especially
+when a step feels unnecessary; that feeling is exactly what they exist to override.
+
+### Before the first edit of a session
+
+- Read `docs/sharp-edges.md` (~60 lines). It pays for itself on almost every task.
+- If the task names a file, read that file **and its immediate neighbors** (route ↔
+  controller ↔ service, or page ↔ context) before proposing anything.
+
+### Before any edit
+
+- **Read the file you are editing, in this session, first.** Never edit from memory
+  of a file or from what another file implies about it.
+- **Copy an existing pattern.** Find the closest existing route / controller /
+  component and match its shape. Consistency is a feature of this codebase; novel
+  structure needs a stated reason.
+- **Never invent an API.** Before calling any function, endpoint, or library method
+  not read in this session: read its definition, or confirm the dependency exists in
+  `package.json`. If it can't be verified, say so instead of guessing.
+
+### Scope
+
+- Smallest diff that solves the stated problem. No drive-by refactors, renames,
+  formatting churn, or "while I'm here" fixes — list those as suggestions instead.
+- If a second bug surfaces mid-task, report it; don't silently expand the diff.
+
+### Hard gates before claiming done
+
+Work is not done until every line below is true. If a gate failed or couldn't run,
+the summary must say so explicitly — "should work" is a banned phrase.
+
+1. `npx tsc --noEmit` exits 0 in every package touched
+   (`restaurantiq-backend/`, `restaurantiq-frontend/`).
+2. The changed flow was **exercised, not just compiled** — hit the endpoint with
+   `curl`, load the page — or the summary states exactly what wasn't run and why.
+3. The full diff was re-read top to bottom after the last edit.
+4. Invariants re-checked against the diff: tenant scoping present, `{ data, error }`
+   shape intact, money still integer cents, any migration numbered + idempotent.
+5. If manual SQL must be run in the Supabase SQL editor, the summary says so in its
+   own paragraph — every time, even if mentioned earlier.
+
+### Reporting
+
+- Lead with the outcome ("Fixed X; the cause was Y"), then supporting detail.
+- Quote real command output for claims; paraphrased test results don't count.
+  Failures are reported as failures, not softened.
+
+### When stuck
+
+- Two failed attempts at the same fix = stop. Re-read the actual error text and
+  `docs/sharp-edges.md`, then re-derive the cause from evidence before attempt
+  three. Never loop on variations of a guess.
+- Prefer answering questions with `grep` / reading / `curl` over asking the user.
+  Ask only for genuinely user-owned decisions: product scope, spending money,
+  destructive or irreversible operations.
+
 ## Database Schema
 
 ```sql
@@ -134,13 +194,45 @@ Seven specialized agents per sprint. Each owns a clear vertical slice.
    → writes docs/weekly-summary/week-N.md
 ```
 
+### Orchestration protocol (main session)
+
+Subagents share no memory — each one launches blank except for its definition
+file. The main session is the message bus, and vague handoffs are where sprints
+rot. Every agent prompt must be self-contained: the goal, exact file paths, the
+pasted contract or finding, and the expected output format. An agent that has to
+rediscover context burns usage re-reading the repo — expensive and error-prone.
+
+1. **Architect first.** Launch `architect-agent` with the sprint goal. Save its
+   full output; every later prompt quotes from it.
+2. **Build in parallel, contracts pasted verbatim.** Launch `backend-agent` and
+   `frontend-agent` together, each with the relevant contract sections *pasted
+   into the prompt*. "Per the architect's plan" is meaningless to an agent that
+   never saw the plan.
+3. **Gate between build and QA.** `npx tsc --noEmit` must be clean in both
+   packages, and the backend agent's posted API contract captured, before QA
+   launches. If either fails, fix first.
+4. **QA with evidence in hand.** Launch `qa-agent` (security brief first, then
+   functional) with the changed-file list and the architect's success criteria
+   pasted in.
+5. **Findings loop.** A Critical finding goes back to the build agent with the
+   finding quoted verbatim; QA re-checks the fix. A sprint with an open Critical
+   is not done — no exceptions.
+6. **Close out.** `devops-agent`, then `teaching-agent`, each given the file list
+   and the prior outputs they depend on.
+
 ### Lightweight path for small fixes
 
-The full pipeline is for sprints. Single-file bug fixes, doc updates, and small
-refactors skip it: go straight to the relevant build agent (`backend-agent` /
-`frontend-agent`), then a QA spot-check of the diff. Use judgment — anything
-touching auth, tenant scoping, or money handling gets the Security Agent pass
-regardless of size.
+The full pipeline is for sprints. For single-file bug fixes, doc updates, and
+small refactors, work **directly in the main session — no subagents** — holding
+yourself to the Operating Discipline gates above plus the invariants in the
+relevant build agent's definition (`.claude/agents/backend-agent.md` /
+`frontend-agent.md`). The QA spot-check is also yours: run the QA agent's grep
+sweep over what you touched (`console.log`, `parseFloat`/float math on money,
+`req.user` scoping, `useEffect` cancellation) before calling it done. Spawning
+agents costs real usage; spend it where isolation or an adversarial second
+reader actually adds something. One exception is not negotiable: anything
+touching auth, tenant scoping, or money handling gets a real `qa-agent`
+security pass regardless of size.
 
 ## Code Conventions
 

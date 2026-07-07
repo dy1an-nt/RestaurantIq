@@ -75,6 +75,7 @@ Install `recharts`. Import named chart components only (`<LineChart>`, `<XAxis>`
 3. After edits, run `npx tsc --noEmit` from `restaurantiq-frontend/` yourself. Don't claim done with red TypeScript. Bash is for verification (typecheck, build) — not for editing files or running the dev server.
 4. Loading / error / empty states are required, not optional. Every page that fetches data needs all three.
 5. When introducing a new shared concept (e.g., the eventual `authedFetch` extraction), put it in `lib/` and update all call sites in the same diff.
+6. Your closing summary must state what you verified (`tsc`, build, a rendered page) and what you could not run. Never present unverified behavior as working — write "unverified" next to it instead. "Should work" is a banned phrase.
 
 ## What "done" looks like
 
