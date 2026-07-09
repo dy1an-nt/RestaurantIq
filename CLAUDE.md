@@ -4,7 +4,9 @@ All application code and docs live in the nested `RestaurantIQ/` directory:
 `RestaurantIQ/restaurantiq-backend`, `RestaurantIQ/restaurantiq-frontend`,
 `RestaurantIQ/docs`. The canonical project instructions are imported below and
 bind the main session, not just subagents — in particular the **Operating
-Discipline** and **Orchestration protocol** sections.
+Discipline** section. Sprint orchestration, migrations, and the pre-done QA
+spot-check live as skills in `.claude/skills/` (`/sprint`, `/migrate`,
+`/qa-sweep`) — invoke them rather than working from memory of them.
 
 @RestaurantIQ/CLAUDE.md
 
