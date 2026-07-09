@@ -31,8 +31,8 @@ Full reference + behavior: [`deployment.md`](deployment.md). Quick verification 
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` — required.
 - [ ] `ANTHROPIC_API_KEY` — required.
 - [ ] `TOKEN_ENCRYPTION_KEY` — **required to store integration tokens.** 64-char
-      hex. ⚠️ Not fail-fast validated at boot (see known-limitations) — confirm it
-      is set *before* connecting any restaurant, or token storage fails at runtime.
+      hex. Fail-fast validated at boot in production (missing or malformed key
+      refuses to start), so a misconfiguration surfaces at deploy time.
 - [ ] `SUPABASE_JWT_SECRET` — recommended (HS256 fallback if JWKS is unavailable).
 - [ ] `SQUARE_ENVIRONMENT` — `production` for real restaurants (not `sandbox`).
 - [ ] `FRONTEND_URL` — the deployed Vercel origin (CORS allow-list).
@@ -54,7 +54,8 @@ Full reference + behavior: [`deployment.md`](deployment.md). Quick verification 
 
 ## 2. Database & migrations
 
-- [ ] `npm run migrate:status` shows all 25 migrations applied on the pilot DB.
+- [ ] `npm run migrate:status` shows every migration applied on the pilot DB
+      (26 as of Sprint U) — `0 pending`, no checksum drift.
 - [ ] Row Level Security backstop is enabled (default-deny) — see schema docs.
 - [ ] Procedure for applying new migrations during the pilot: [`migrations.md`](migrations.md).
 

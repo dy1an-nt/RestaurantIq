@@ -38,10 +38,11 @@
 - **Rate limiting is in-memory (per backend instance).** With multiple backend
   replicas a user could get up to N× the intended limit. Pin to a single backend
   instance for the pilot, or accept the looser limit. *(Review M4.)*
-- **`TOKEN_ENCRYPTION_KEY` is not fail-fast validated at boot.** It's required to
-  store/read integration tokens but isn't in the startup env schema, so a
-  misconfiguration boots fine and fails on the first token operation. Double-check
-  it's set before the pilot. *(Review M7.)*
+- ~~**`TOKEN_ENCRYPTION_KEY` is not fail-fast validated at boot.**~~ *Resolved
+  2026-07-09:* the startup env schema now rejects a malformed key anywhere and
+  requires `TOKEN_ENCRYPTION_KEY` (or `ACTIVE_TOKEN_ENCRYPTION_KEY`) in
+  production, so a misconfigured deploy fails at boot instead of on the first
+  token operation. *(Review M7.)*
 - **No integrated error tracking / uptime monitoring / alerting** (e.g. Sentry,
   uptime pings). Monitoring during the pilot is manual — see the pilot checklist.
 - **Developer tools gate is client-side.** Sync Health is hidden behind a

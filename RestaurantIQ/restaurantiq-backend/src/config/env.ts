@@ -18,6 +18,12 @@ dotenv.config();
  * optional. There is no separate app-level "JWT_SECRET" — Supabase issues and
  * signs the tokens.
  */
+// 64 hex chars = 32 bytes, the AES-256 key length lib/tokenCrypto.ts requires.
+const hex64 = /^[0-9a-fA-F]{64}$/;
+const encryptionKey = z.string().refine((v) => hex64.test(v.trim()), {
+  message: 'must be 64 hex characters (32 bytes)',
+});
+
 const envSchema = z.object({
   // --- Core (required) ------------------------------------------------------
   SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
@@ -44,11 +50,47 @@ const envSchema = z.object({
   // --- Auth (optional: HS256 fallback when not using JWKS) ------------------
   SUPABASE_JWT_SECRET: z.string().optional(),
 
+  // --- Integration token encryption (AES-256-GCM at rest) -------------------
+  // Storing or reading Square/DoorDash credentials fails at runtime without a
+  // key, so production requires one (enforced in superRefine below) instead of
+  // booting fine and failing on the first token operation.
+  // ACTIVE_TOKEN_ENCRYPTION_KEY is preferred; TOKEN_ENCRYPTION_KEY is the
+  // historical fallback. LEGACY_TOKEN_ENCRYPTION_KEYS are decrypt-only keys
+  // kept through a rotation. See lib/tokenCrypto.ts.
+  ACTIVE_TOKEN_ENCRYPTION_KEY: encryptionKey.optional(),
+  TOKEN_ENCRYPTION_KEY: encryptionKey.optional(),
+  LEGACY_TOKEN_ENCRYPTION_KEYS: z
+    .string()
+    .refine(
+      (v) =>
+        v
+          .split(',')
+          .map((k) => k.trim())
+          .filter((k) => k.length > 0)
+          .every((k) => hex64.test(k)),
+      { message: 'every comma-separated key must be 64 hex characters (32 bytes)' },
+    )
+    .optional(),
+
   // --- Distributed scheduler (optional: single-instance fallback) -----------
   // Recommended in production when running >1 backend instance so leader
   // election can use a Postgres advisory lock. Unset → this instance is the
   // sole leader (fine for single-instance / dev).
   DATABASE_URL: z.string().optional(),
+}).superRefine((env, ctx) => {
+  if (
+    env.NODE_ENV === 'production' &&
+    !env.ACTIVE_TOKEN_ENCRYPTION_KEY &&
+    !env.TOKEN_ENCRYPTION_KEY
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['TOKEN_ENCRYPTION_KEY'],
+      message:
+        'required in production (or set ACTIVE_TOKEN_ENCRYPTION_KEY) — ' +
+        'integration tokens cannot be stored or read without it',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

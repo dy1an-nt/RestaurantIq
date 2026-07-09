@@ -94,7 +94,9 @@ SQUARE_APPLICATION_SECRET=...
 DOORDASH_CLIENT_ID=...
 DOORDASH_CLIENT_SECRET=...
 
-# Token encryption at rest (required once you store integration tokens)
+# Token encryption at rest. REQUIRED with NODE_ENV=production — boot fails
+# without ACTIVE_TOKEN_ENCRYPTION_KEY or TOKEN_ENCRYPTION_KEY, and a malformed
+# key (not 64 hex chars) fails boot in any environment.
 ACTIVE_TOKEN_ENCRYPTION_KEY=<64 hex chars>            # openssl rand -hex 32
 LEGACY_TOKEN_ENCRYPTION_KEYS=
 
