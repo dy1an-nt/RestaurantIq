@@ -10,6 +10,10 @@ import SalesHeatmap from '../components/charts/SalesHeatmap';
  * not a signed-in view). Mirrors the real chart-component prop shapes.
  * ────────────────────────────────────────────────────────────────────────── */
 
+// Single place to swap in a Calendly link or a dedicated address later.
+const CONTACT_EMAIL = 'dylanteopaco@gmail.com';
+const WALKTHROUGH_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('RestaurantIQ walkthrough')}`;
+
 const SAMPLE_TREND = [
   8200, 7600, 9100, 8800, 10200, 9600, 11400, 10800, 12100, 11600, 12800, 12300,
 ].map((dollars, i) => ({
@@ -187,31 +191,25 @@ const Hero = () => (
   </section>
 );
 
-const ProofBar = () => {
-  const marks: [string, IconName][] = [
-    ['Bella Trattoria', 'store'],
-    ['Harborline', 'margins'],
-    ['Saffron & Co.', 'star'],
-    ['The Mason Room', 'dashboard'],
-    ['Pier 9 Kitchen', 'marketing'],
-  ];
-  return (
-    <section className="pt-[46px] pb-2.5">
-      <div className="max-w-[1200px] mx-auto px-10">
-        <p className="text-center text-[13px] font-semibold text-ink-3 mb-[26px]">
-          Trusted by independent restaurants and small groups
+const PilotBar = () => (
+  <section className="pt-[46px] pb-2.5">
+    <div className="max-w-[1200px] mx-auto px-10">
+      <div className="max-w-[760px] mx-auto flex flex-col items-center text-center gap-3">
+        <span className="inline-flex items-center gap-2 text-[12.5px] font-bold tracking-[0.12em] uppercase text-navy-600">
+          <Icon name="store" size={16} /> Pilot program now open
+        </span>
+        <p className="text-[15.5px] leading-[1.6] font-medium text-ink-2">
+          RestaurantIQ was built alongside independent restaurant owners, and we're
+          onboarding a small group of pilot restaurants right now. Founding
+          restaurants get hands-on setup help and a direct line to the team.
         </p>
-        <div className="flex items-center justify-center gap-x-14 gap-y-6 flex-wrap opacity-75">
-          {marks.map(([name, icon]) => (
-            <span key={name} className="flex items-center gap-2.5 text-ink-2 font-extrabold text-[17px] tracking-[-0.02em]">
-              <Icon name={icon} size={20} className="text-navy-600" /> {name}
-            </span>
-          ))}
-        </div>
+        <a href={WALKTHROUGH_HREF} className="text-[14.5px] font-bold text-navy-700 hover:text-navy-800 underline underline-offset-4">
+          Ask about joining the pilot
+        </a>
       </div>
-    </section>
-  );
-};
+    </div>
+  </section>
+);
 
 const SectionHead = ({ eyebrow, title, body, center = false, navy = false }: { eyebrow: string; title: string; body: string; center?: boolean; navy?: boolean }) => (
   <div className={`max-w-[720px] ${center ? 'mx-auto text-center' : ''}`}>
@@ -242,12 +240,15 @@ const Features = () => (
       />
       <div className="grid grid-cols-1 sm:grid-cols-6 gap-[22px] mt-[54px]">
         <FeatureCard icon="integrations" title="Connect once, synced forever" body="Link your POS and delivery apps in minutes. Orders, items, and prices stay current automatically — no spreadsheets, no exports." span="big">
-          <div className="flex gap-2 flex-wrap">
-            {['Square', 'Toast', 'DoorDash', 'Uber Eats'].map((t) => (
+          <div className="flex gap-2 flex-wrap items-center">
+            {['Square', 'DoorDash'].map((t) => (
               <span key={t} className="text-xs font-bold px-[11px] py-[5px] rounded-sm bg-canvas text-ink-2">{t}</span>
             ))}
             <span className="text-xs font-bold px-[11px] py-[5px] rounded-sm bg-pos-bg text-pos inline-flex items-center gap-1">
               <Icon name="check" size={12} strokeWidth={2.4} /> Synced 4 min ago
+            </span>
+            <span className="text-xs font-semibold px-[11px] py-[5px] rounded-sm border border-line text-ink-3">
+              Toast &amp; Uber Eats — coming soon
             </span>
           </div>
         </FeatureCard>
@@ -298,7 +299,7 @@ const Features = () => (
 
 const HowItWorks = () => {
   const steps: { n: string; icon: IconName; t: string; d: string }[] = [
-    { n: '01', icon: 'integrations', t: 'Connect your POS', d: 'Link Square or Toast and your delivery apps in a couple of clicks. We handle the rest.' },
+    { n: '01', icon: 'integrations', t: 'Connect your POS', d: 'Link Square and DoorDash in one guided setup — the onboarding walks you through every step.' },
     { n: '02', icon: 'analytics', t: 'We crunch the numbers', d: 'RestaurantIQ analyzes every order, item, and price across the last 30+ days — automatically.' },
     { n: '03', icon: 'check', t: 'Act with confidence', d: 'Get a ranked menu and clear, specific actions you can make this week.' },
   ];
@@ -361,14 +362,15 @@ const FinalCTA = () => (
         See what your menu is really telling you.
       </h2>
       <p className="text-[19px] font-medium text-white/[0.76] max-w-[46ch] mx-auto mb-[34px]">
-        Connect your POS and get your first insights in minutes. Free to start — no card required.
+        Connect your POS and get your first insights in minutes. Free for pilot
+        restaurants — no card required.
       </p>
       <div className="flex items-center justify-center gap-3">
         <Link to="/signup" className="inline-flex items-center justify-center gap-2 h-[50px] px-[26px] rounded-[10px] bg-white text-navy-700 text-[15.5px] font-bold hover:-translate-y-px transition-transform">
           Get started free
           <Icon name="arrowUp" size={17} strokeWidth={2} style={{ transform: 'rotate(90deg)' }} />
         </Link>
-        <a href="#features" className="inline-flex items-center justify-center h-[50px] px-[26px] rounded-[10px] border border-white/[0.24] bg-white/[0.06] text-white text-[15.5px] font-bold hover:bg-white/[0.12] transition-colors">
+        <a href={WALKTHROUGH_HREF} className="inline-flex items-center justify-center h-[50px] px-[26px] rounded-[10px] border border-white/[0.24] bg-white/[0.06] text-white text-[15.5px] font-bold hover:bg-white/[0.12] transition-colors">
           Book a walkthrough
         </a>
       </div>
@@ -377,15 +379,26 @@ const FinalCTA = () => (
 );
 
 const Footer = () => {
-  const cols = [
-    { h: 'Product', links: ['Features', 'How it works', 'Analytics', 'Integrations'] },
-    { h: 'Company', links: ['About', 'Customers', 'Careers', 'Contact'] },
-    { h: 'Resources', links: ['Help center', 'Guides', 'Privacy', 'Terms'] },
+  const cols: { h: string; links: [string, string][] }[] = [
+    {
+      h: 'Product',
+      links: [
+        ['Features', '#features'],
+        ['How it works', '#how'],
+        ['Analytics', '#analytics'],
+      ],
+    },
+    {
+      h: 'Contact',
+      links: [
+        ['Join the pilot', WALKTHROUGH_HREF],
+        [CONTACT_EMAIL, `mailto:${CONTACT_EMAIL}`],
+      ],
+    },
   ];
-  const socials: IconName[] = ['marketing', 'analytics', 'insights'];
   return (
     <footer className="bg-navy-900 text-white/[0.62] pt-[60px] pb-10">
-      <div className="max-w-[1200px] mx-auto px-10 grid grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-10">
+      <div className="max-w-[1200px] mx-auto px-10 grid grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr] gap-10">
         <div className="max-w-[30ch] col-span-2 md:col-span-1">
           <div className="flex items-center gap-[11px] text-white mb-4">
             <Logo size={28} on="light" /> <Wordmark footer />
@@ -397,21 +410,14 @@ const Footer = () => {
         {cols.map((c) => (
           <div key={c.h}>
             <h4 className="text-[13px] font-bold text-white tracking-wide uppercase mb-4">{c.h}</h4>
-            {c.links.map((l) => (
-              <a key={l} className="block text-[14.5px] text-white/[0.66] py-1.5 font-medium hover:text-white cursor-pointer">{l}</a>
+            {c.links.map(([label, href]) => (
+              <a key={label} href={href} className="block text-[14.5px] text-white/[0.66] py-1.5 font-medium hover:text-white">{label}</a>
             ))}
           </div>
         ))}
       </div>
-      <div className="max-w-[1200px] mx-auto px-10 border-t border-white/10 mt-[46px] pt-[26px] flex items-center justify-between text-[13.5px]">
-        <span>© 2026 RestaurantIQ, Inc. All rights reserved.</span>
-        <div className="flex gap-2.5">
-          {socials.map((s, i) => (
-            <a key={i} className="w-[34px] h-[34px] rounded-[9px] border border-white/[0.16] flex items-center justify-center text-white/70 hover:bg-white/[0.08] hover:text-white cursor-pointer">
-              <Icon name={s} size={16} />
-            </a>
-          ))}
-        </div>
+      <div className="max-w-[1200px] mx-auto px-10 border-t border-white/10 mt-[46px] pt-[26px] text-[13.5px]">
+        <span>© 2026 RestaurantIQ. All rights reserved.</span>
       </div>
     </footer>
   );
@@ -421,7 +427,7 @@ const Landing = () => (
   <div className="bg-surface text-ink min-h-screen">
     <TopNav />
     <Hero />
-    <ProofBar />
+    <PilotBar />
     <Features />
     <HowItWorks />
     <AnalyticsShowcase />
