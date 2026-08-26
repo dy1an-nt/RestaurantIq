@@ -78,7 +78,7 @@ const TopNav = () => (
 
 const Eyebrow = ({ children, navy = false, center = false }: { children: React.ReactNode; navy?: boolean; center?: boolean }) => (
   <span className={`inline-flex items-center gap-2 text-[12px] font-bold tracking-[0.08em] uppercase whitespace-nowrap ${navy ? 'text-[#9db8d6]' : 'text-navy-600'} ${center ? 'justify-center' : ''}`}>
-    <span className={`inline-block w-[18px] h-px ${navy ? 'bg-[#9db8d6]' : 'bg-navy-500'}`} />
+    <span className={`inline-block w-[8px] h-[8px] rotate-45 ${navy ? 'bg-[#9db8d6]' : 'bg-navy-600'}`} />
     {children}
   </span>
 );
