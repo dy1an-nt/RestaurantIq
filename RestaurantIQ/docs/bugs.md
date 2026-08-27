@@ -209,3 +209,15 @@ A running record of every notable bug found during development: what broke, how 
 **Fix.** Both sites now accept either shape: `Array.isArray(embed) ? embed[0] : embed`, with the TypeScript type widened to `T | T[] | null` and the misleading comments corrected.
 
 **Lesson.** Two, really. First: a "lesson learned" written into a comment is code too — it propagates by copy-paste and goes stale just as silently. The embed shape depends on how the client detects FK cardinality, so the only safe read is one that tolerates both. Second: `?? fallback` on a data-mapping path hides structural failures; the UUID titles shipped because the fallback made the failure look like data instead of a bug. Fail loudly (or log) when a join you asked for comes back unreadable.
+
+---
+
+### 18. Free stock photo still carried visible venue branding
+
+**Symptom.** A licensed cafe photo selected for the landing-page carousel visibly included a venue name, logo, and branded publications. The image was free to use, but the final marketing surface could still imply an endorsement by businesses that had not approved RestaurantIQ.
+
+**Diagnosis.** The source-image review stopped at copyright permission. Pexels licensed the photograph itself, but that license did not clear every trademark, artwork, property, or endorsement issue inside the photograph.
+
+**Fix.** Replaced the image with a brand-free cafe interior, reviewed the final crop at full resolution, and labeled carousel captions as illustrative. The asset manifest now records the source, photographer, transformation, and rights-review caveat.
+
+**Lesson.** Copyright permission is only one part of visual-asset clearance. Inspect the exact shipped crop for third-party marks and identifiable people, and avoid imagery that could suggest an unaffiliated venue endorses the product.
