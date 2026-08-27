@@ -63,20 +63,27 @@ Full reference + behavior: [`deployment.md`](deployment.md). Quick verification 
 
 ## 3. Monitoring during the pilot
 
-There is **no integrated error tracking / uptime alerting yet** (known-limitations).
-Until there is, monitor manually on a daily cadence:
+Error tracking and an uptime probe now exist, but **both are inert until you
+configure them** (deployment.md -> Monitoring). Do that first:
 
-- [ ] **Backend health:** `GET /health` returns 200 (Railway healthcheck).
-- [ ] **Sync health:** enable developer mode (Settings → Developer) and watch the
-      **Sync Health** page — last-success times, retry counts, error messages per
-      provider, per restaurant.
+- [ ] **Sentry:** create a project, set `SENTRY_DSN` (and `SENTRY_ENVIRONMENT=production`)
+      in Railway. Confirm the boot log shows `{"event":"SENTRY_STATUS","enabled":true}`.
+- [ ] **Uptime:** add a repository variable `HEALTH_URL` =
+      `https://<backend>.up.railway.app/health`, then run the **Uptime** workflow
+      manually once (Actions -> Uptime -> Run workflow) to prove it passes.
+- [ ] Watch for issues labelled `uptime` - one opens after three consecutive
+      failed probes and is commented on, not duplicated, while the outage lasts.
+
+Still manual, because nothing automates these yet:
+
+- [ ] **Sync health:** enable developer mode (Settings -> Developer) and watch the
+      **Sync Health** page - last-success times, retry counts, error messages per
+      provider, per restaurant. A sync failure does not page anyone.
 - [ ] **Logs:** scan Railway logs for `error`-level structured JSON daily.
 - [ ] **AI cost:** check Anthropic usage against expectations (chat + insights are
       rate-limited, but watch for anomalies).
 - [ ] **Data freshness:** each restaurant's dashboard shows "Last synced"; an amber
-      stale warning means a sync has lapsed >24h — investigate.
-
----
+      stale warning means a sync has lapsed >24h - investigate.
 
 ## 4. Backups & restore verification
 

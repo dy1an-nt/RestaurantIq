@@ -42,8 +42,9 @@ rather than to an agent definition. Agent files must point here, not copy from h
 - **CHECK constraint gaps.** Adding a new value to an enum-style column (`source`, `type`)
   requires migrating the CHECK, named explicitly. Hit twice (`menu_items.source`,
   `orders.source`).
-- **Migrations are hand-run and must be idempotent** (`IF NOT EXISTS`,
-  `DROP CONSTRAINT IF EXISTS … ADD`), numbered, wrapped in `BEGIN; … COMMIT;`.
+- **Migrations go through the tracked runner and must be idempotent where practical**
+  (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS … ADD`). Number each file and apply it
+  with `npm run migrate`; never hand-paste production changes into the SQL editor.
 
 ## Square
 

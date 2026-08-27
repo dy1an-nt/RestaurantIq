@@ -5,8 +5,8 @@ recover them, and how to verify that recovery actually works. It is written so a
 on-call operator with no prior context can act during an incident.
 
 Companion docs:
-- [deployment.md](./deployment.md) — how the two services are deployed.
-- [migrations.md](./migrations.md) — how schema changes reach production.
+- [deployment.md](./deployment.md) - how the two services are deployed.
+- [migrations.md](./migrations.md) - how schema changes reach production.
 
 ---
 
@@ -14,7 +14,7 @@ Companion docs:
 
 | Asset | Where it lives | Backed up by | Blast radius if lost |
 | ----- | -------------- | ------------ | -------------------- |
-| Application data (orders, menu items, summaries, alerts) | Supabase Postgres | Supabase automated backups + manual dumps | Total — this is the product |
+| Application data (orders, menu items, summaries, alerts) | Supabase Postgres | Supabase automated backups + manual dumps | Total - this is the product |
 | Database schema | Supabase Postgres | Git (`migrations/`) | Recoverable from migrations |
 | Backend secrets (API keys, encryption keys) | Railway env vars | **Operator-held password manager** | Integrations + encrypted tokens unreadable |
 | Frontend config | Vercel env vars | Git `.env.example` + password manager | Frontend points at wrong/no backend |
@@ -41,7 +41,7 @@ the project's plan:
   to Pro before going live so daily backups and PITR are available.
 
 Where to confirm/configure:
-**Supabase Dashboard → Project → Database → Backups.**
+**Supabase Dashboard -> Project -> Database -> Backups.**
 
 Action items for production readiness:
 - [ ] Project is on Pro (or higher).
@@ -53,9 +53,9 @@ Action items for production readiness:
 
 Agree on these explicitly; they drive the plan above.
 
-- **RPO (Recovery Point Objective)** — how much data loss is tolerable. With
+- **RPO (Recovery Point Objective)** - how much data loss is tolerable. With
   daily backups, worst case is ~24h. With PITR, minutes.
-- **RTO (Recovery Time Objective)** — how long recovery may take. A Supabase
+- **RTO (Recovery Time Objective)** - how long recovery may take. A Supabase
   restore is typically minutes-to-tens-of-minutes depending on data size.
 
 ### Manual logical backups (defense in depth)
@@ -63,7 +63,7 @@ Agree on these explicitly; they drive the plan above.
 Automated backups live inside the Supabase project. For an extra, portable copy
 that survives even a project-level disaster, take periodic logical dumps with
 `pg_dump` using the **direct connection string** (the same `DATABASE_URL` family
-used by the scheduler — port 5432):
+used by the scheduler - port 5432):
 
 ```bash
 # Full logical backup (schema + data), custom format for selective restore.
@@ -80,7 +80,19 @@ upload the artifact to storage outside Supabase.
 ### Backup verification
 
 A backup you've never restored is a hope, not a backup. Verify on a schedule
-(e.g. monthly):
+(e.g. monthly).
+
+**Scripted:** `restaurantiq-backend/scripts/restore-drill.sh` performs the whole
+procedure below - dump, restore into a throwaway local database, compare row
+counts source-vs-restored - and refuses to restore anywhere but localhost. It
+selects the newest installed `pg_dump`, because a client older than the server
+cannot dump it at all.
+
+```bash
+cd restaurantiq-backend && ./scripts/restore-drill.sh
+```
+
+The manual equivalent, if you'd rather run it by hand:
 
 1. Spin up a throwaway Postgres (local Docker or a scratch Supabase project).
 2. Restore the most recent dump into it:
@@ -106,17 +118,17 @@ project** flow (see below) and run the same smoke queries.
 
 ### Database restoration steps
 
-**Option A — Restore from a Supabase automated backup (preferred):**
+**Option A - Restore from a Supabase automated backup (preferred):**
 
-1. Supabase Dashboard → Database → Backups.
+1. Supabase Dashboard -> Database -> Backups.
 2. Choose the target backup (or a PITR timestamp).
 3. Restore. For safety, restore to a **new project** first, validate, then cut
-   over — avoid overwriting the only surviving copy until the restore is proven.
+   over - avoid overwriting the only surviving copy until the restore is proven.
 4. If you restored to a new project, update `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, and `DATABASE_URL` in Railway, and
    `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in Vercel, then redeploy both.
 
-**Option B — Restore from a manual `pg_dump`:**
+**Option B - Restore from a manual `pg_dump`:**
 
 1. Provision a fresh Postgres / Supabase project.
 2. `pg_restore` the dump (command above).
@@ -150,14 +162,14 @@ Recovery procedure:
 
 ### Redeployment process
 
-If the services (not the data) are lost, both redeploy from git — they are
+If the services (not the data) are lost, both redeploy from git - they are
 stateless:
 
 1. **Backend (Railway):** redeploy the `restaurantiq-backend` service from the
    current `main`. Confirm env vars are present, then verify startup (it
    fail-fasts on missing required vars).
 2. **Frontend (Vercel):** redeploy `restaurantiq-frontend` from `main` with
-   `VITE_*` vars set. Remember Vite inlines `VITE_API_URL` at build time — a
+   `VITE_*` vars set. Remember Vite inlines `VITE_API_URL` at build time - a
    redeploy is required after any change.
 3. Run the post-deployment checklist in [deployment.md](./deployment.md#post-deployment-checklist).
 
@@ -166,7 +178,7 @@ stateless:
 After any restore + redeploy, confirm the system is actually healthy:
 
 - [ ] `curl https://<backend>/health` returns `{"status":"ok",...}`.
-- [ ] Log in via the frontend — authentication works.
+- [ ] Log in via the frontend - authentication works.
 - [ ] Dashboard loads and shows expected data (row counts match pre-incident).
 - [ ] AI insights endpoint returns a result (proves `ANTHROPIC_API_KEY`).
 - [ ] An integration sync runs, or tokens decrypt (proves encryption key intact).
@@ -179,7 +191,7 @@ After any restore + redeploy, confirm the system is actually healthy:
 
 | Symptom | First check |
 | ------- | ----------- |
-| Backend won't boot | Railway logs — fail-fast prints the missing/invalid env var |
+| Backend won't boot | Railway logs - fail-fast prints the missing/invalid env var |
 | 500s on AI endpoints | `ANTHROPIC_API_KEY` set? Rate limit (429, not 500)? Anthropic status? |
 | Frontend can't reach API | `VITE_API_URL` correct + redeployed? `FRONTEND_URL` allowlist? |
 | Integrations failing after restore | Token encryption key present and matching? |
