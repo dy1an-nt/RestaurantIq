@@ -3,12 +3,12 @@ name: CI
 # Quality gate for RestaurantIQ (added in Sprint R).
 #
 # Before this existed, nothing ran the tests, typecheck, lint, or audit before
-# code reached main — which is how a red test suite and a dead lint script
+# code reached main - which is how a red test suite and a dead lint script
 # landed unnoticed. This workflow makes those gates mandatory on every push and
 # pull request so broken code is rejected automatically instead of relying on
 # the author remembering to run them.
 #
-# The repo is doubly-nested (git root → RestaurantIQ/ → app packages), so each
+# The repo is doubly-nested (git root -> RestaurantIQ/ -> app packages), so each
 # job sets its own working-directory and cache path accordingly.
 
 on:
@@ -23,17 +23,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs:
+    name: Documentation accuracy
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Check documentation facts and paths
+        run: node scripts/check-docs.mjs
+
   backend:
     name: Backend (typecheck · lint · test · audit)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: RestaurantIQ/restaurantiq-backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          # Node 20 hit end-of-life April 2026; 22 is the active LTS and
+          # matches the engines pin in both package.jsons.
+          node-version: 22
           cache: npm
           cache-dependency-path: RestaurantIQ/restaurantiq-backend/package-lock.json
       - name: Install (clean, lockfile-pinned)
@@ -50,14 +65,15 @@ jobs:
   frontend:
     name: Frontend (typecheck · lint · audit)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: RestaurantIQ/restaurantiq-frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: RestaurantIQ/restaurantiq-frontend/package-lock.json
       - name: Install (clean, lockfile-pinned)
@@ -68,7 +84,7 @@ jobs:
         run: npm run lint
       - name: Build
         # tsc alone doesn't catch Vite/Rollup failures (case-sensitive imports
-        # on Linux, asset resolution) — without this they first surface at the
+        # on Linux, asset resolution) - without this they first surface at the
         # Vercel deploy, after merge.
         run: npm run build
       - name: Audit production dependencies (fail on high+)

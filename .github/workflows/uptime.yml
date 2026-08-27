@@ -1,0 +1,142 @@
+name: Uptime
+
+# External uptime monitoring for the deployed backend.
+#
+# Railway's own healthcheck restarts an unhealthy container but never tells
+# anyone it happened, so an outage between manual log checks is invisible - the
+# gap recorded in docs/known-limitations.md. This workflow is the outside
+# observer: a process inside the app cannot report that the app is down.
+#
+# Setup (one-time): add a repository variable HEALTH_URL pointing at the
+# deployed health endpoint, e.g. https://<backend>.up.railway.app/health
+#   Settings -> Secrets and variables -> Actions -> Variables -> New variable
+# Without it every run skips, so the workflow is inert until configured.
+#
+# Limitation worth knowing: GitHub's scheduled runs are best-effort and can be
+# delayed by several minutes under load, so treat this as a safety net rather
+# than a tight-SLA monitor. docs/operations.md documents an external monitor
+# (UptimeRobot / Better Stack) as the higher-resolution option.
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub may coalesce or delay these under load.
+    - cron: '*/5 * * * *'
+  # Allow a manual run to verify the workflow itself works.
+  workflow_dispatch:
+
+# Never let two checks overlap; a slow run should not stack up behind itself.
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+permissions:
+  # Needed only to open/comment on the outage issue.
+  issues: write
+
+jobs:
+  health:
+    name: Probe /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "${{ vars.HEALTH_URL }}" ]; then
+            echo "HEALTH_URL repository variable is not set - skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Probe health endpoint
+        id: probe
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          # Three attempts, 20s apart. A single failed request is usually a
+          # transient blip (deploy restart, network hiccup); paging on it
+          # trains everyone to ignore the alert. Three in a row is a signal.
+          attempt=1
+          max=3
+          while [ "$attempt" -le "$max" ]; do
+            # Clear the body file first: curl leaves the PREVIOUS response in
+            # place when it cannot connect, which would report a stale body in
+            # the outage issue. Capture the status separately so a failed curl
+            # yields one "000", not the doubled value `|| echo` produces.
+            rm -f /tmp/health.json
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' \
+              --max-time 20 "${{ vars.HEALTH_URL }}" || true)
+            code="${code:-000}"
+            body=$(head -c 300 /tmp/health.json 2>/dev/null || true)
+
+            if [ "$code" = "200" ] && printf '%s' "$body" | grep -q '"status":"ok"'; then
+              echo "Attempt $attempt: healthy ($code)"
+              echo "healthy=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "Attempt $attempt/$max failed: HTTP $code, body: ${body:-<empty>}"
+            last_code="$code"
+            last_body="$body"
+            attempt=$((attempt + 1))
+            [ "$attempt" -le "$max" ] && sleep 20
+          done
+
+          echo "healthy=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "code=${last_code:-000}"
+            echo "body<<EOF"
+            echo "${last_body:-<empty>}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Open or update outage issue
+        # Runs only when the probe actually failed - not when it was skipped
+        # for missing configuration, and not when a previous step errored.
+        if: failure() && steps.probe.outputs.healthy == 'false'
+        uses: actions/github-script@v8
+        env:
+          LAST_CODE: ${{ steps.probe.outputs.code }}
+          LAST_BODY: ${{ steps.probe.outputs.body }}
+        with:
+          script: |
+            const title = 'Backend health check failing';
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const detail =
+              `Health probe failed 3 consecutive times.\n\n` +
+              `- HTTP status: \`${process.env.LAST_CODE}\`\n` +
+              `- Response body: \`${(process.env.LAST_BODY || '').trim()}\`\n` +
+              `- Run: ${runUrl}\n` +
+              `- Checked at: ${new Date().toISOString()}\n\n` +
+              `Runbook: \`RestaurantIQ/docs/operations.md\``;
+
+            // Reuse an existing open issue so a sustained outage produces one
+            // thread with comments, not one issue every five minutes.
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'uptime',
+              per_page: 20,
+            });
+            const existing = open.find((i) => i.title === title);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Still failing.\n\n${detail}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                labels: ['uptime'],
+                body: detail,
+              });
+            }
