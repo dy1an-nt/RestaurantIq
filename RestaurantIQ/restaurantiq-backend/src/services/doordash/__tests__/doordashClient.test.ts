@@ -7,7 +7,7 @@
  * against a mocked fetch: these tests document and enforce exactly which JSON
  * envelopes the client tolerates (json.items/json.data for catalog,
  * json.orders/json.data for orders) so the parsing fallbacks can't silently
- * drift. See docs/weekly-summary/week-K-findings.md for the assumption log.
+ * drift. See docs/archive/sprint-notes/week-K-findings.md for the assumption log.
  */
 import {
   getDoorDashClient,

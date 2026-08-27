@@ -10,7 +10,7 @@
  *             the subsequent API call surface a clean 401 instead of failing the
  *             sync opaquely at the token step.
  *
- * See docs/weekly-summary/week-K-findings.md for why these differ.
+ * See docs/archive/sprint-notes/week-K-findings.md for why these differ.
  */
 import { randomBytes } from 'crypto';
 
