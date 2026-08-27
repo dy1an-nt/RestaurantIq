@@ -63,14 +63,16 @@ sprint as a whole, not just to individual agents.
 
 **Teaching Agent** (`teaching-agent`)
 - Goal format: "After all agents finish, summarize the sprint. Explain it like I'm a CS student who wants to understand it deeply."
-- Owns: `docs/weekly-summary/week-N.md` — one file per sprint
+- Owns: `RestaurantIQ/docs/archive/sprint-notes/<sprint-id>-<slug>.md` - one factual handoff per sprint
 - Waits for: DevOps Agent output before writing
 - Produces, for each sprint:
   - What each file does and why it exists
   - Key technical decisions and why they were made that way
   - Patterns or concepts used (e.g. "this uses the repository pattern because…")
-  - What you should be able to explain in an interview about this week's work
-  - What to look up if you want to go deeper
+  - Validation evidence and deployment impact
+  - Named follow-up work and known limitations
+- Does not put interview questions or model answers in committed docs
+- Proposes a `RestaurantIQ/docs/case-studies/` update only for a durable engineering decision that is not already represented
 
 ## Sprint Workflow
 
@@ -93,7 +95,7 @@ sprint as a whole, not just to individual agents.
    → deployment checklist: env vars, migrations, rollback plan
 
 6. Teaching Agent
-   → writes docs/weekly-summary/week-N.md
+   → writes RestaurantIQ/docs/archive/sprint-notes/<sprint-id>-<slug>.md
 ```
 
 ## Orchestration protocol (main session)
@@ -121,5 +123,5 @@ rediscover context burns usage re-reading the repo — expensive and error-prone
    is not done — no exceptions.
 6. **Close out.** `devops-agent`, then `teaching-agent`, each given the file list
    and the prior outputs they depend on. A sprint is not closed until the
-   week-N summary exists and any new migration has been applied per /migrate
+   archived sprint handoff exists and any new migration has been applied per /migrate
    (or the summary states in its own paragraph that it still must be).
