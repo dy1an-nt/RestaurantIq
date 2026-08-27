@@ -48,6 +48,10 @@ rather than to an agent definition. Agent files must point here, not copy from h
 
 ## React / frontend
 
+- **A stock-photo license does not clear embedded third-party rights.** Before using an
+  image in commercial marketing, inspect the final crop for venue names, trademarks,
+  recognizable artwork, and identifiable people. Avoid visuals that could imply an
+  endorsement even when the image itself is free to use (bug #18 in `bugs.md`).
 - **StrictMode double-runs effects** in dev. Every async `useEffect` needs a `cancelled`
   flag checked before `setState`, cleared in cleanup.
 - **Stale closures in contexts.** `useCallback`/`useEffect` deps must include `session`

@@ -4,6 +4,7 @@ import Icon, { IconName } from '../components/Icons';
 import RevenueTrendChart from '../components/charts/RevenueTrendChart';
 import TopItemsChart from '../components/charts/TopItemsChart';
 import SalesHeatmap from '../components/charts/SalesHeatmap';
+import HospitalityCarousel from '../components/HospitalityCarousel';
 import dashboardScreenshot from '../../../docs/screenshots/dashboard.png';
 
 const CONTACT_EMAIL = 'dylanteopaco@gmail.com';
@@ -132,7 +133,7 @@ const Hero = () => (
             ))}
           </dl>
         </div>
-        <ScreenshotPanel />
+        <HospitalityCarousel />
       </div>
     </div>
   </section>
@@ -263,6 +264,9 @@ const AnalyticsShowcase = () => (
           </div>
           <SalesHeatmap data={SAMPLE_HEAT} loading={false} />
         </div>
+      </div>
+      <div className="mt-10">
+        <ScreenshotPanel />
       </div>
     </div>
   </section>

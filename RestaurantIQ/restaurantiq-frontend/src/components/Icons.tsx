@@ -21,7 +21,7 @@ export type IconName =
   | 'integrations' | 'sync' | 'signout' | 'star' | 'attention' | 'arrowUp'
   | 'arrowDown' | 'flat' | 'search' | 'chevron' | 'calendar' | 'bell'
   | 'filter' | 'download' | 'check' | 'dot' | 'mail' | 'lock' | 'store'
-  | 'chat' | 'advisor' | 'channels' | 'close' | 'undo';
+  | 'chat' | 'advisor' | 'channels' | 'close' | 'undo' | 'play' | 'pause';
 
 const PATHS: Record<IconName, JSX.Element> = {
   dashboard: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M8 15.5v-3M12 15.5v-6M16 15.5v-4.5" /></>,
@@ -54,6 +54,8 @@ const PATHS: Record<IconName, JSX.Element> = {
   channels: <><path d="M3.5 18.5h8v-6h-8v6ZM3.5 9.5h8v-5h-8v5Z" /><path d="M15.5 18.5h5v-14h-5v14Z" /><path d="M8.5 12.5v-3" /></>,
   close: <><path d="m6 6 12 12M18 6 6 18" /></>,
   undo: <><path d="M8 6 4.5 9.5 8 13" /><path d="M4.5 9.5h9a6 6 0 0 1 0 12H9" /></>,
+  play: <><path d="m8 5 10 7-10 7V5Z" /></>,
+  pause: <><path d="M9 5.5v13M15 5.5v13" /></>,
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
