@@ -193,15 +193,3 @@ Run after pulling this branch. Backend: `npm ci && npm test && npm run lint`. Fr
 | No high-severity prod vulnerabilities | ✅ 0 / 0 |
 
 ---
-
-## 6. What you should be able to explain in an interview
-
-- **Why time-dependent tests are a code smell, not a test smell.** The fix was in the *production* code
-  (inject the clock), because the root cause was production reading the wall clock — the same bug that
-  would show a real user a silently-empty dashboard after a lapsed sync.
-- **Why validation belongs in middleware, not the controller.** `validateBody` replaces `req.body` with
-  the parsed value, so the service layer can *assume* its inputs — you can reason about what's guaranteed.
-- **Why `requireRestaurant` is a security control, not just DRY.** It's the multi-tenant isolation
-  boundary; one implementation means one place to audit, not 23 places to get subtly wrong.
-- **Why CI is the actual deliverable.** The tests already existed and were good; the missing piece was a
-  gate that runs them. Process, not code, was the gap.

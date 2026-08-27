@@ -92,25 +92,7 @@ wrong in.
 
 ---
 
-## 4. What you should be able to explain in an interview
-
-1. **Why persist AI output at all** — cost, latency, history, workflow,
-   analytics: the five-birds-one-stone argument, and why "cache" alone
-   undersells it (the status workflow is impossible without identity).
-2. **How you give identity to nondeterministic output** — compute the key from
-   structured fields you control, never from prose the model can reword.
-3. **Why generation must not live in the request or sync path** — blast-radius
-   reasoning: an Anthropic outage should degrade freshness, not availability.
-4. **The dismissed-vs-escalation tradeoff** — respecting user decisions while
-   not letting a stale decision hide a worsening problem; the audit event that
-   makes the override explainable.
-5. **Why the first supertest suite mattered** — unit tests can't catch a
-   missing `requireRestaurant` on a route; the wrong-tenant HTTP test is the
-   only automated guard for the project's #1 invariant.
-
----
-
-## 5. Deployment + closeout (2026-07-09)
+## 4. Deployment + closeout (2026-07-09)
 
 - Migration 026 is **applied** on the production database (verified by probing
   `insights`, `insights_generation_state`, `insight_events` directly).
@@ -123,7 +105,7 @@ wrong in.
   boot (required in production, format-checked everywhere), closing review M7
   from `known-limitations.md`.
 
-## 6. To go deeper
+## 5. To go deeper
 
 - Read `insightsService.ts` top to bottom — the header comment is the design
   doc in miniature.

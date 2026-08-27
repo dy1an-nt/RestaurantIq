@@ -110,26 +110,6 @@ The `/sync-health` page. Four sections, all fed by `GET /api/integrations/sync-m
 - **Bounded concurrency.** `concurrentMap` caps in-flight work so a tick can't open 200 provider connections at once. `Promise.allSettled` semantics keep failures isolated.
 - **Graceful shutdown / lock handoff.** Releasing the lock on `SIGTERM` turns a slow stale-timeout failover into an instant one — important during rolling deploys.
 
-## What you should be able to explain in an interview
-
-**Q: How do you make sure only one of several backend instances runs the scheduler?**
-We use a Postgres session-level advisory lock. On boot each instance tries `pg_try_advisory_lock` with a fixed key — 987654321 — and exactly one gets `true`; that one is the leader and the only one that dispatches syncs. The subtle part is that we *can't* take this lock through our normal Supabase client, because that's PostgREST over HTTP with no persistent session — the lock would release the moment the query returned. So leader election is the one place we open a raw `pg` connection and hold it open for the whole process lifetime. The lock lives as long as that session, which gives us free failover: if the leader crashes, Postgres drops its session, the lock releases automatically, and on the next tick a standby acquires it.
-
-**Q: What happens to in-progress retries if you deploy or the server crashes?**
-Nothing's lost, because retries don't live in memory. When a sync fails transiently we write the retry state into the `sync_jobs` row — status `pending_retry`, a `next_retry_at`, and an incremented `retry_count`. There's no `setTimeout`. Every scheduler tick just queries "give me pending_retry rows whose next_retry_at is in the past" and runs them. So whichever instance is leader after a deploy picks up exactly what's due. The backoff is 0, 1, 5, 15, 60 minutes, and once we blow the budget the row goes to `failed_permanently`.
-
-**Q: Why two tables for sync state instead of one?**
-They have different lifecycles. `integration_sync_status` is the current snapshot — one row per restaurant-and-provider, updated in place, and it's where the per-restaurant lock lives, so it stays small and hot. `sync_jobs` is an append-only log — one row per attempt, kept forever, carrying retry history and durable retry state. Metrics and the recent-jobs feed read the log; the lock and "is it healthy right now" read the snapshot. Cramming history into the snapshot table would mean either destroying history on every update or faking a multi-row key, which is just the log table with extra steps.
-
-**Q: There was a bug where retries looped forever. What was it?**
-When the tick dispatched a due retry, the first version created a brand-new `sync_jobs` row for the attempt and never touched the original `pending_retry` row. That row's `next_retry_at` stayed in the past, so the discovery query returned it again every single tick — re-dispatching forever and leaking a new row each time. The fix was to pass the existing job id into `syncIntegration` so the retry continues its own row: `markRunning` flips it from `pending_retry` to `running`, and since the discovery query filters on `pending_retry`, it's no longer due. We pinned it with a test that asserts zero new inserts and the original row transitioning to running then success.
-
-**Q: You have a per-restaurant lock AND leader election AND job rows. Don't those overlap?**
-They're three different layers solving three different problems. Leader election decides *which process* gets to schedule at all — one coordinator across the fleet. The per-restaurant lock (`locked_at`, from Sprint L) prevents two *syncs* for the same restaurant overlapping, even across a manual click, a scheduled run, and a retry. And the `sync_jobs` row is the durable *record* of one attempt plus its retry state. They compose: the leader is the only one dispatching; when it dispatches, the per-restaurant lock still guards against a manual sync racing it; and whatever happens is written to a job row. Even with a single leader the per-restaurant lock still matters, because a user can hit "Run sync" by hand at any moment.
-
-**Q: Why is the advisory lock session-scoped and held in its own connection?**
-A session-level advisory lock is released exactly when the database session ends. That's the property we want — it makes failover automatic, because a dead leader's session dies and the lock frees itself. But it means the lock is only valid as long as we keep that one session alive, which is why leader election owns a dedicated long-lived `pg.Client` instead of borrowing a pooled connection that comes and goes per query.
-
 ## What to look up if you want to go deeper
 - **Postgres advisory locks** — the official "Advisory Locks" section of the Postgres docs. Compare `pg_advisory_lock` (session, blocking), `pg_try_advisory_lock` (session, non-blocking — what we use), and `pg_advisory_xact_lock` (transaction-scoped). Understand why session scope is required here.
 - **`SELECT … FOR UPDATE SKIP LOCKED`** — the canonical multi-worker queue claim. "What is SKIP LOCKED for in PostgreSQL 9.5" (2ndQuadrant) is the classic write-up. This is the upgrade path for `findDueRetryJobs` once more than one instance processes retries.

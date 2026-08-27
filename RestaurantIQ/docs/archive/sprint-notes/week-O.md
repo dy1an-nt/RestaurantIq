@@ -113,25 +113,6 @@ These were re-skinned onto the design tokens and `Icon` set. Their data fetching
 
 ---
 
-## What you should be able to explain in an interview
-
-**Q: You rebranded an app spread across ~25 files. How did you make that maintainable instead of a find-and-replace nightmare?**
-I put the entire brand — colors, type, radii, shadows, tracking — in Tailwind's theme config as semantic tokens, and had components reference the *meaning* (`text-ink-2` for muted text, `bg-pos` for "good") rather than raw hex. So the value lives in exactly one place. Changing the primary brand color is a one-line edit to `navy.700` and the whole app follows. It's the design-system version of programming to an interface: components depend on a name, not a value. The honest caveat is the migration isn't 100% — a couple of older components still use stock Tailwind palettes, and those won't track a future rebrand until I finish moving them onto tokens.
-
-**Q: Why hand-write an icon component instead of using a library or emoji?**
-Emoji render differently on every OS, can't inherit text color, and clash with a real typeface. A library would work, but for a fixed set of about 25 icons I drew them into one `Icon` component on a shared 24×24 grid that strokes with `currentColor`. That gives me one consistent stroke weight everywhere and free theming — any `text-*` class colors the icon, because it inherits `currentColor`. No new dependency, tiny bundle, total control. If the set grew large I'd reconsider and pull in a library.
-
-**Q: Your marketing landing page shows the product's charts. How did you keep it from lying about what the app looks like?**
-I render the *actual* chart components — the same `RevenueTrendChart`, `TopItemsChart`, and `SalesHeatmap` the dashboard uses — and just feed them sample data shaped exactly like the real API, with money in cents. So if a chart's design changes, the landing page changes with it automatically; there's no screenshot to go stale. The tradeoff is the landing page now depends on those components staying prop-compatible, but I treat that as a good thing — a breaking change surfaces immediately at build time.
-
-**Q: The dashboard KPI cards don't show trend percentages even though the mockups did. Why?**
-Because the backend doesn't expose a previous-period comparison, so any "+8.4% vs last month" would be invented. I show the absolute values that are actually true and leave a comment explaining the delta is intentionally omitted until the API supports it. It's the same discipline we use for money on the backend — you don't fabricate a number just because the design has a slot for it.
-
-**Q: You restyled the login and signup pages. How did you avoid breaking authentication?**
-I extracted all the new layout — the split-screen, the brand panel, the tabs — into an `AuthShell` component that takes the form as children. The pages now just pass their existing form into the shell. The actual auth code — the `signIn`/`signUp` calls, error state, redirects — didn't change at all. Keeping the touched surface as small as possible is the whole strategy for a redesign: the less behavior you move, the less you can regress.
-
----
-
 ## What to look up if you want to go deeper
 - **Design tokens** — the W3C Design Tokens Community Group format, and how Tailwind's `theme.extend` is a lightweight token layer. The concept (named, themeable values) is the same idea behind CSS custom properties and tools like Style Dictionary.
 - **`currentColor` and SVG theming** — MDN on the `currentColor` keyword and on styling inline SVG; this is the mechanism that makes the icon component theme-for-free.

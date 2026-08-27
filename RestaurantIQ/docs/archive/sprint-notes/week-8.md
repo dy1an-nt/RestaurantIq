@@ -261,28 +261,6 @@ Not introduced this sprint, but worth understanding because the extraction *pres
 
 ---
 
-## What you should be able to explain in an interview
-
-**"You added a second order source. How did you avoid duplicating your ingestion code, and why does that matter?"**
-I extracted the write path — dedup, order-item linkage, daily-summary rebuild, alert regeneration — out of the Square-specific file into a shared `services/ingestion/persistence` layer that takes the source as a parameter. Both Square and DoorDash became thin "fetch from the vendor, normalize to shared row shapes, hand off to persistence" front-ends. It matters because that logic is subtle — the dedup keys, the FK-map reconstruction — and two copies would drift; a fix in one wouldn't reach the other. It's the difference between supporting two channels and supporting N: the next source is a client plus a normalizer, not a new pipeline. And critically, the daily-summary rebuild is source-agnostic, so DoorDash data reached margins, insights, and alerts with zero changes to any of those features.
-
-**"How do you make a sync safe to run twice?"**
-Idempotency through dedup keys. Every menu item and order carries the vendor's own id as `external_id`, and I dedupe on `(restaurant_id, source, external_id)`. Before inserting orders I do one SELECT for which external ids already exist and insert only the new ones, so a second sync inserts zero rows and revenue doesn't double. I even made the mock sandbox data use *stable* ids rather than random ones, specifically so a demo re-sync exercises the dedup path instead of looking like all-new data every time.
-
-**"Walk me through what happens when an access token expires mid-integration."**
-Before each sync I check expiry with a safety window — 5 minutes for Square — so I refresh a token that's *about* to expire, not one that just did, because the sync itself takes time. If it's within the window, I call the OAuth refresh-token grant, persist the new access token, expiry, and refresh token (preserving the old refresh token if the provider didn't rotate one — losing that would silently kill the integration next cycle), all encrypted at rest, then continue. If refresh is impossible — no refresh token or the provider rejects it — I mark the integration disconnected and throw, so the operator sees an actionable state instead of the app retrying a dead token and still claiming "connected."
-
-**"How do you rotate an encryption key without re-encrypting everything at once?"**
-I split the key into an active key used for all new encryption and a list of legacy keys used only for decryption. Decryption tries the active key, then each legacy key in order; AES-GCM is authenticated, so the wrong key throws on the auth-tag check and I just fall through to the next. When a value decrypts under a legacy key, I flag it, and the caller re-encrypts and persists it under the active key. So rotation completes gradually as values are touched — no flag day, no big-bang migration. To retire a key you move it to legacy, let reads migrate values forward over time, then delete it once nothing uses it.
-
-**"Why does the wrong decryption key 'just throw' — how do you know it's wrong rather than the data being corrupt?"**
-AES-GCM is authenticated encryption. Each ciphertext carries an auth tag computed over the plaintext and key. On decrypt, `final()` recomputes and verifies it; under the wrong key the tag won't match and it throws. I can't distinguish "wrong key" from "tampered ciphertext" from the exception alone — both fail authentication — but for key *selection* that's fine: any failure means "not this key, try the next," and if no configured key works I throw a controlled error. The auth tag is doing double duty: integrity protection and key-selection signal.
-
-**"You moved proven code into a shared module. How did you keep that safe?"**
-I lifted it verbatim and made the source a parameter — the only delta — rather than rewriting it, so I'm reasoning about one small change instead of a reimplementation. I preserved even the non-obvious workarounds, like re-reading the catalog after upsert instead of trusting the returning clause, because those encode real bugs. And I wrote the test suite around the highest-risk behaviors — token refresh branches, key rotation, the error-leak fix — so the extraction is pinned by tests, not just by inspection.
-
----
-
 ## What to look up if you want to go deeper
 
 - **The "narrow waist" / hourglass model** (e.g. the IP hourglass, or "On the Hourglass Model" by Beck, CACM 2019) — the formal argument for why a single thin interface in the middle maximizes both the diversity of things above it and below it. Your ingestion pipeline is a small instance of the same idea.

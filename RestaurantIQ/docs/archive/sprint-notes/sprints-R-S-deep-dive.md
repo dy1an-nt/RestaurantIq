@@ -1,6 +1,6 @@
 # RestaurantIQ — Sprints R & S: A Teaching Walkthrough
 
-*Audience: an intermediate engineer who knows React and has used a database, and wants to understand this work well enough to defend it in an interview. This document is grounded in the actual code on disk, not just the sprint write-ups.*
+*Audience: an intermediate engineer who knows React and has used a database, and wants to understand the implementation decisions in depth. This document is grounded in the actual code on disk, not just the sprint write-ups.*
 
 ---
 
@@ -47,8 +47,6 @@ Tests inject a fixed `now` anchored to the seed dates; production passes nothing
 
 **The deeper lesson — why a test failure was a production smell.** The exact same wall-clock read is what would show a *real owner* a silently-empty dashboard after a lapsed sync. The function reading "now" with no way to reason about it is a correctness liability whether a test or a user hits it. A time-dependent test failing isn't a "test smell" to paper over — it's the test doing its job: surfacing hidden coupling to ambient global state. **Time, randomness, the filesystem, and the network are all ambient inputs; code that reads them implicitly is code you can't reason about deterministically.**
 
-> **Interview soundbite:** "We had four tests failing on a clean clone. The temptation is to call them flaky and move on. But the fix belonged in production code, not the test: the aggregation function read `new Date()` inline to compute its 30-day window, so the window slid with the calendar. We made the instant an injectable parameter that defaults to the real clock — production is byte-for-byte the same, but tests pin a fixed `now`. The failing test wasn't noise; it was surfacing that our data layer was coupled to the wall clock, which is the same bug that would silently empty a user's dashboard."
-
 ---
 
 ### (b) `requireRestaurant`: middleware as a *security boundary*, not just DRY
@@ -69,8 +67,6 @@ Every route below those two lines can now trust `req.restaurantId` exists and be
 **Why this is a security control and not merely "less duplication."** DRY is about maintainability. This is about *attack surface*. Twenty copies of the tenancy check means twenty independent chances to forget the `.eq('user_id', sub)`, or scope by a client-supplied id instead of the token's `sub`, or return the wrong status. Each copy is a place a cross-tenant leak can hide. Collapsing it means **one implementation to audit and one place to review** — a security reviewer reads ~30 lines once instead of grepping 20 sites and reasoning about each. The duplication *was* the vulnerability surface; removing it shrinks the surface.
 
 **The tradeoff, stated honestly.** The middleware was *deliberately not* forced onto every `user_id` lookup. 12 of 23 lookups collapsed into it; 11 stayed. The holdouts are the restaurant-CRUD resource itself (where the restaurant *is* the thing being created/read) and the integrations/menu-item routes, which do **body/param-based ownership checks** — they verify ownership of a specific resource id from the request, return **403** (not 404), and need token columns. Forcing the middleware there would have changed API contracts (404 vs 403 leak different information to an attacker) for no real gain. The skill on display is knowing that "two things look similar" doesn't mean "merge them" — these have genuinely different *semantics*.
-
-> **Interview soundbite:** "Our backend bypasses Postgres row-level security and uses a service-role key, so tenant isolation is enforced in code on every request. The check — resolve the restaurant where `user_id` equals the JWT's subject — was copy-pasted ~20 times, and every copy is a chance to leak across tenants. We pulled it into one middleware that runs after auth and attaches `req.restaurantId`. That's not really a DRY refactor; it's collapsing the multi-tenant attack surface into one auditable spot. We left ~11 lookups alone on purpose, because those are resource-level ownership checks that return 403, not 404 — different semantics, different status codes, so merging them would've been wrong."
 
 ---
 
@@ -93,8 +89,6 @@ Zod was already a dependency, but it was only used in `config/env.ts`. Request b
 
 **The tradeoff.** Centralizing into one middleware means the *error shape* is uniform (good for the frontend, which assumes the `{ data, error }` contract), but it also means every write route now needs a schema written and kept in sync with the DB. That's deliberate friction: you can't add a write route and forget to validate it, because the pattern is "mount `validateBody` or you're the odd one out." The alternative — per-handler `if (!body.x) return 400` — is where inconsistency breeds.
 
-> **Interview soundbite:** "Validation lives in middleware, not the controller, and the key move is that it *replaces* `req.body` with the parsed result. Zod doesn't just check the shape — it trims, strips unknown keys, applies defaults — so the handler receives a clean, typed value and the service layer underneath can assume its inputs are valid. There's no path to the handler with raw input. We standardized it across all 13 write routes, which let us delete about 100 lines of hand-rolled per-field checks and, more importantly, made every 400 response look the same, which the frontend's `{ data, error }` contract depends on."
-
 ---
 
 ### (d) CI as the *actual* deliverable (the tests already existed)
@@ -109,8 +103,6 @@ This is a genuinely senior insight: *the deliverable was the enforcement, not th
 - The repo is **doubly nested** (git root → `RestaurantIQ/` → app packages), so each job sets its own `working-directory` and `cache-dependency-path`. This is the kind of mundane thing that breaks CI for an afternoon if you don't get it right.
 - `concurrency: cancel-in-progress: true` cancels superseded runs on the same ref, so a fresh push doesn't queue behind a stale one. Small, but it's the difference between a snappy and a sluggish feedback loop.
 - `npm ci` (not `npm install`) — clean, lockfile-pinned installs, so CI tests the *exact* dependency tree the lockfile describes, not a freshly-resolved one.
-
-> **Interview soundbite:** "The most valuable thing we shipped that sprint added no features and no tests — it was the CI pipeline. We already had 167 passing tests; what we didn't have was anything that ran them before code hit main. That's literally how a red suite and a broken lint script got to main in the first place — the author just had to remember, and didn't. CI turns 'we have tests' from a claim into an invariant: typecheck, lint, test, and a prod-only `npm audit` gate every PR. The lesson is that quality gates are worthless until they're mandatory and automated."
 
 ---
 
@@ -127,8 +119,6 @@ These differ for real reasons (tax/tips/discounts aren't line items). An owner c
 **Why "label" is the right call here, and why it's honest rather than lazy.** The review itself flagged this as the **#1 MVP trust risk** and recommended the label path as the lower-risk fix. The reasoning: *a number the user understands the provenance of is trustworthy even if it differs from another number; a number with no provenance is untrustworthy even if it's "right."* The gap between the two revenue figures is real and defensible — what was broken was that nothing *explained* it. Labeling fixes the actual defect (missing provenance) without touching the riskier machinery (the data model). The reconciliation work is explicitly logged as a remaining Phase-3 risk, not quietly dropped.
 
 This connects to a broader money-handling discipline in the codebase: **everything is integer cents from DB → API → display.** `lib/format.ts` is the single source of truth for turning cents into strings (`formatCents`, `formatDollars`), replacing ~9 subtly-different copies. Floats are forbidden for money because IEEE-754 addition isn't associative — sum enough small floats and you drift. So the money story across these sprints is two-pronged: *represent it exactly* (cents, centralized formatting) and *explain what each figure means* (labels, tooltips).
-
-> **Interview soundbite:** "We had two revenue numbers that didn't match — line-item revenue on the dashboard versus POS gross on the orders view. They differ legitimately, because gross includes tax and tips. The tempting fix is to reconcile them, but that's a schema and ingestion change, and risky. We decided to *label* instead: a methodology note plus tooltips that say exactly what each figure includes. The principle is that a number with clear provenance is trustworthy even when it differs from another number, but a number with no provenance is untrustworthy even when it's correct. We logged the real reconciliation as known debt rather than pretending we'd solved it."
 
 ---
 
@@ -152,8 +142,6 @@ The `embedded` prop is essentially a small **inversion of control**: the child c
 
 It also pairs with proper ARIA tab semantics (`role="tablist/tab/tabpanel"`, `aria-selected`, `aria-controls`) — see section (g) — so the consolidation improves accessibility rather than regressing it.
 
-> **Interview soundbite:** "We had two margin pages an owner couldn't distinguish, so we merged them into one tabbed page. The thing I'd highlight is that we didn't rewrite either component — we gave each an `embedded` prop that just suppresses its own title so the tab shell can own the heading. The components still work as standalone routes; they also work as tab panels. It's a tiny inversion of control — the child cedes its chrome to its parent — and it gets you the UX consolidation with essentially zero risk to the two data flows underneath."
-
 ---
 
 ### (g) Accessibility done properly: keyboard + screen reader, not hover-only
@@ -176,8 +164,6 @@ The same rigor shows up across the sprint:
 
 The underlying concept: **the accessibility tree is a parallel API.** Sighted mouse users consume the visual rendering; screen-reader and keyboard users consume the semantic tree (roles, names, states, relationships). `aria-*` attributes and correct native elements are how you populate that second API. Hover handlers populate neither.
 
-> **Interview soundbite:** "Our info tooltips aren't hover-only, which is the usual mistake. The trigger is a real button so it's in the tab order; the bubble opens on focus, closes on Escape, and is wired to the button with `aria-describedby` so a screen reader announces it. Same idea for the dev toggle — it's a `role='switch'` with `aria-checked`, not a styled div — and the tabs use proper tablist roles. The mental model is that the accessibility tree is a second API: mouse users read the pixels, assistive-tech users read roles, names, and states, and your job is to populate both. And we used `focus-visible` rather than `focus` so keyboard users always see focus rings without inflicting them on mouse users."
-
 ---
 
 ### (h) Dev-mode flag: a UX guard that is explicitly *not* a security boundary
@@ -192,51 +178,9 @@ A nice React detail: flipping the flag dispatches a **custom event** (`riq-dev-m
 
 **Why this distinction is the whole point.** Conflating "hidden from the menu" with "secured" is a classic and dangerous mistake — it's security theater. The honest framing is: *this flag decides what's worth showing, not what's allowed.* Visibility is a UX concern handled on the client; authorization is a security concern handled on the server, and never the twain shall meet. If Sync Health *did* leak cross-tenant data, hiding the nav link would be worthless — you'd need server-side authorization.
 
-> **Interview soundbite:** "We hid an engineering-only diagnostics page behind a localStorage dev-mode flag, and the important thing is we documented in the code that it is *not* a security boundary. The route still loads if you type the URL — the flag only hides the nav link. That's fine, because a client-side flag can be flipped in devtools in two seconds, so it can never gate anything sensitive. The page's actual protection is the same server-side auth and tenant middleware as everything else. The flag is purely about cognitive load — keeping a scheduler observability page out of a restaurant owner's face. Conflating 'hidden from the menu' with 'secured' is security theater, and we were careful not to."
-
 ---
 
-## 3. Interview question bank
-
-**1. Four tests fail on a fresh clone but pass on your machine from last month. Walk me through it.**
-That's the classic time-bomb signature. In our case the aggregation function read `new Date()` inline to compute a trailing-30-day window, and the tests seeded fixed dates; once the calendar passed the window, the function correctly returned zero rows and the tests failed. The fix went in *production* code: we made the instant an injectable parameter defaulting to the real clock, so prod is unchanged but tests pin a fixed `now`. The general principle: time, randomness, network, and filesystem are ambient inputs, and code that reads them implicitly can't be reasoned about deterministically. A time-dependent test failing is the test doing its job.
-
-**2. You have a multi-tenant app with RLS disabled and a service-role key. How do you prevent cross-tenant leaks?**
-Every query has to be scoped to the caller's tenant in application code, because the database won't do it for you. We derive the restaurant from the JWT's `sub` claim — never from a client-supplied id — and we collapsed that resolution into one middleware, `requireRestaurant`, that runs after auth and attaches `req.restaurantId`. Centralizing it means one place to audit instead of twenty copy-pasted checks, each of which was a chance to leak. The tradeoff is that correctness lives in code rather than the DB, so the right long-term move past a handful of tenants is to turn RLS back on as a backstop — defense in depth.
-
-**3. Why put validation in middleware instead of the controller, and why replace `req.body`?**
-Middleware makes validation a boundary the request must cross, so there's no code path to the handler with raw input. Replacing `req.body` with the Zod-parsed result matters because Zod *transforms* — trims strings, strips unknown keys, applies defaults — so the handler and service layer see clean, typed values and can assume validity. It also gives every 400 a uniform shape, which our frontend's `{ data, error }` contract depends on. We standardized it across all 13 write routes and deleted ~100 lines of hand-rolled checks in the process.
-
-**4. Your tests already pass. Why is adding CI the most valuable thing you did that week?**
-Because passing tests are a claim until something enforces them. We had 167 good tests and nothing that ran them before merge — which is exactly how a red suite and a broken lint script reached main. CI converts "we have tests" into the invariant "broken code can't reach main." The deliverable wasn't the tests or the lint rules; it was making them mandatory on every push and PR. Process was the gap, not code.
-
-**5. Two numbers in your product disagree. A user notices. What do you do?**
-First figure out if they disagree for a legitimate reason. Ours did: dashboard revenue was line-item totals, the orders view was POS gross including tax and tips. The instinct is to reconcile them, but that was a risky schema and ingestion change. We labeled instead — a methodology note plus tooltips explaining exactly what each figure includes — because a number with clear provenance is trustworthy even when it differs, and a number with no provenance isn't trustworthy even when it's right. We logged the real reconciliation as known debt instead of hiding it.
-
-**6. How do you handle money in this system, and why not floats?**
-Integer cents everywhere — database, API, and display — formatted to a string only at the very end, through one shared `format.ts` helper instead of nine slightly-different copies. Floats are out because IEEE-754 addition isn't associative; summing many small floating-point amounts accumulates drift, which is unacceptable for money. Square hands us BigInt amounts that we coerce to Number when writing to integer columns.
-
-**7. You need to merge two similar pages into a tabbed view without risking the existing logic. How?**
-We gave each existing page component an optional `embedded` prop that just suppresses its own title, then rendered them as tab panels under a shell that owns the heading. The data flows stayed untouched, so there was almost no regression risk, and each component still works as a standalone route. It's a small inversion of control — the child cedes its chrome to whoever renders it — which is the minimal seam that makes a component composable without restructuring it.
-
-**8. What makes a tooltip actually accessible, versus just visually present?**
-The trigger has to be a real focusable element — a button, not a span with onClick — so it's in the tab order. It has to open on focus, not just hover, and dismiss on Escape. And the bubble has to be tied to the trigger with `aria-describedby` and a `role="tooltip"` so a screen reader announces it. Hover-only tooltips are invisible to keyboard and screen-reader users. The model is that the accessibility tree is a second API: you populate it with roles, names, states, and relationships, and hover handlers populate none of that.
-
-**9. You hid an admin page behind a localStorage flag. Is that secure?**
-No, and we documented that in the code. localStorage is client-controlled — anyone can flip the flag in devtools — so it can never gate anything sensitive. The route still loads directly; the flag only hides the nav link. That's acceptable because the page's real protection is the same server-side auth and tenant middleware as every route, and it exposes diagnostics, not another tenant's data. The flag is purely a UX guard to reduce cognitive load. Conflating "hidden from the menu" with "authorized" is security theater.
-
-**10. How do you make a `localStorage` value reactive across a React app and across browser tabs?**
-localStorage isn't a reactive store, so you bridge it with events. On write, dispatch a custom event that the current tab listens for, so its components re-render immediately — the native `storage` event doesn't fire in the tab that made the change. Then *also* listen for the native `storage` event, which *does* fire in other tabs, to stay in sync across tabs. Our `useDevMode` hook does both, and wraps localStorage access in try/catch because it throws in some private-browsing modes.
-
-**11. Your CI audit step is `npm audit --omit=dev --audit-level=high`. Why those flags?**
-`--omit=dev` because dev-only dependencies don't ship to production, so a vuln in a test or build tool shouldn't block a release — you'd get alert fatigue and start ignoring the gate. `--audit-level=high` because failing on low/moderate advisories, many of which are noise or unreachable, trains people to bypass CI. You want the gate to fire on things that genuinely matter — high and critical in code that actually ships — so that when it's red, people take it seriously.
-
-**12. A reviewer says "turn on all the strict ESLint rules." Why might you not?**
-A lint config is a quality gate, not a style crusade. We deliberately left `no-explicit-any` off because our data layer — PostgREST embeds, raw Square/DoorDash payloads — is genuinely dynamically shaped, so `any` there is a reviewed tradeoff, not an accident; tightening it is tracked separately. We also kept `no-console` off because we use `console.error` for structured operational logging in ~147 deliberate places. Every relaxation has a one-line rationale in the config so it's auditable, not silent. The goal is a gate that catches real bugs — unused vars, dead code, shadowing — without generating a 200-finding cleanup nobody asked for, because a gate everyone overrides protects nothing.
-
----
-
-## 4. What to study next to go deeper
+## 3. What to study next to go deeper
 
 **Testing & determinism**
 - Search the testing literature for **"test doubles" and "controlling the clock"** — Martin Fowler's articles on test doubles and on the *Clock* / *humble object* patterns are the canonical treatment of injecting time, randomness, and I/O. Our default-parameter clock is the lightweight version of this.
@@ -284,6 +228,6 @@ Frontend:
 - `.../src/pages/Margins.tsx`, `.../src/pages/Settings.tsx`
 
 Sprint sources:
-- `docs/weekly-summary/week-R.md`, `docs/weekly-summary/week-S.md`
+- `docs/archive/sprint-notes/week-R.md`, `docs/archive/sprint-notes/week-S.md`
 
 > **Accuracy note:** `daily_summaries` is rebuilt via **upsert-first, then prune stale rows** (not delete-then-reinsert), deliberately — so that if the write fails the previous data is preserved (no delete happens before a successful upsert).

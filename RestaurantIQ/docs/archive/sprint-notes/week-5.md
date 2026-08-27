@@ -1,6 +1,6 @@
 # Week 5 — Alerts Hardening + Browser Push Notifications (Sprint F)
 
-> Teaching summary. The code from Week 4 worked; this sprint made it *safe to leave alone*. Read it twice — once now, once before any interview where "production readiness" comes up.
+> Teaching summary. The code from Week 4 worked; this sprint made it safe to leave alone.
 
 ---
 
@@ -183,31 +183,6 @@ The fix: `DROP CONSTRAINT IF EXISTS alerts_type_check; ALTER TABLE ADD CONSTRAIN
 ### Pre-existing bug flagged but not fixed
 
 **Money formatting in the backend.** `alertsService.ts` builds messages like `$${(currentRevenue / 100).toFixed(2)}` and persists them to the DB. The codebase's invariant is "money is integer cents from the DB to the API to the frontend; only the frontend formats." Not fixed this sprint because it's pre-existing, not introduced by these changes, and the fix crosses backend and frontend and warrants its own PR. Knowing-but-not-fixing is fine; not-knowing is the problem.
-
----
-
-## Interview talking points
-
-**"You added a CHECK constraint on a column whose type is already enforced in TypeScript. Why?"**
-The TypeScript union only protects code paths the compiler sees. The DB is the one layer every writer must go through — a future service in another language, a one-off psql insert, or a code path that uses an `as` cast all bypass the TS check. The CHECK is essentially free at runtime and turns a class of silent bugs into loud ones. They're complementary, not redundant.
-
-**"Why a separate index for the list query? You already have a four-column composite index."**
-The four-column index is `(restaurant_id, type, menu_item_id, created_at DESC)`. A B-tree index can serve any leading prefix, but the list query — `WHERE restaurant_id = ? ORDER BY created_at DESC` — skips `type` and `menu_item_id`. To read rows in `created_at` order from the four-column index, Postgres would have to scan all the type/item interleavings. The two-column index `(restaurant_id, created_at DESC)` makes the list a tight range scan. Both indexes earn their keep for different access patterns.
-
-**"Walk me through the optimistic UI race you fixed."**
-The `isMarkingAll` flag was set *after* the optimistic state mutation. Between those statements, a re-render is possible, so a per-item click could fire and find the flag still false. Both requests would hit the server, and the rollback paths could restore stale state. The fix was to set the flag first, before the optimistic mutation, and to add the guard to the per-item handler too — symmetric protection. Same rule as acquiring a lock before touching shared state.
-
-**"Why `sessionStorage` and not `localStorage` for notification dedup?"**
-`localStorage` would suppress notifications forever per origin. `sessionStorage` is per-tab and clears when the tab closes, so the operator gets one notification per work session. Closing the browser yesterday and reopening today produces a new notification.
-
-**"Why didn't you ship a service worker for real push notifications?"**
-A service worker plus the Push API is the right answer for delivery while the tab is closed, but it requires HTTPS, a registered SW script, server-side push subscriptions, VAPID keys, and FCM/APNs integration — roughly half a sprint of work. Native `Notification` ships in 30 lines and validates whether operators want push at all. When usage shows that push-while-closed is the gap, that's the trigger to upgrade.
-
-**"You added two alert types but didn't implement the rules. Isn't that dead code?"**
-Deliberate dead code. The integration surface is wide: the TypeScript union, the dedup `IN` list, the CHECK constraint, and the frontend badge map. Wiring all of them now means the rule author next sprint writes one function in `evaluateAlerts` and ships. The cost of stubbing is low; the benefit is that the next sprint stays small and reviewable.
-
-**"Tell me about a migration that bit you and what you learned."**
-Migration 011 added a CHECK constraint to widen allowed values from three to five. First version used `IF NOT EXISTS` inside a `DO` block. The bug: the constraint already existed by name, from an earlier migration, but with only three values. The guard saw the name and skipped, so the schema kept the narrow version. Lesson: `IF NOT EXISTS` answers a question about existence, not correctness. For things that can change shape, drop-then-add is more robust than create-if-missing.
 
 ---
 

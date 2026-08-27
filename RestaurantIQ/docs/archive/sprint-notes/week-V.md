@@ -23,7 +23,7 @@ Replace the hero's product screenshot with an accessible hospitality carousel th
 - `restaurantiq-frontend/src/assets/landing/README.md` records each source page, photographer, original dimensions, crop, resize, WebP conversion, and rights caveat.
 - `docs/bugs.md` records bug 18, where a licensed image still contained visible venue branding and could imply an endorsement.
 - `docs/sharp-edges.md` turns that incident into a reusable review rule for future marketing assets.
-- `docs/weekly-summary/week-V.md` is the public teaching handoff for the sprint.
+- This file is the archived teaching handoff for the sprint.
 
 ## Key technical decisions
 
@@ -80,20 +80,6 @@ If the operating-system motion preference changes to reduced motion while the pa
 ## Deployment implications
 
 This is a frontend-only deployment. It requires no environment variables, database migrations, backend release, API contract change, or data backfill. The normal frontend build will fingerprint and publish the three WebP assets with the JavaScript and CSS. Their emitted size is about 281 KB combined, and only the first slide is marked eager. Rollback is the same as any static frontend rollback: redeploy the previous frontend artifact.
-
-## What you should be able to explain in an interview
-
-### 1. How did you decide which pause signal wins?
-
-I treated the carousel controls as a precedence problem rather than a pile of independent booleans. A hidden tab is the hard stop because advancing unseen content wastes work and surprises the user on return. Explicit Pause also stops playback. Explicit Play is stronger than hover, focus, and the current reduced-motion pause because it is a direct action, while those are defaults inferred from context. QA proved why that distinction matters: clicking Play also focuses the button, so a naive focus rule immediately pauses the timer again. We fixed that with an explicit playback override. If the system's reduced-motion setting changes later, we clear the override because that new preference is the most recent intent.
-
-### 2. Why build this without a carousel package?
-
-The requirement was three images, one timer, manual controls, keyboard arrows, and predictable pause rules. React state plus `matchMedia`, `visibilitychange`, and `setInterval` cover that without introducing another dependency or styling system. The component also uses our existing icons and Tailwind tokens, so it fits the page. The tradeoff is ownership: a library might bring broader screen-reader conventions and more battle-tested gestures, while our version needs deliberate regression testing. For this narrow scope, the small implementation was easier to audit than a configurable package. I would revisit that choice if we added touch dragging, variable-width slides, dynamic content, or multiple carousels.
-
-### 3. Why was a licensed stock image still rejected?
-
-The license answered whether we could copy and modify the photograph. It did not answer whether the contents of the photograph were appropriate for RestaurantIQ marketing. The rejected image visibly included another venue's name, logo, and branded publications, which could imply that business endorsed or used the product. We replaced it, inspected the exact shipped crop, called the images illustrative, and recorded the source and transformation details beside the files. I think of this as content supply-chain review: provenance is necessary, but you still inspect the artifact. The same principle applies to fonts, icons, datasets, and generated media.
 
 ## What to look up if you want to go deeper
 

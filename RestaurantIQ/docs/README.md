@@ -1,34 +1,45 @@
 # RestaurantIQ Docs
 
-Documentation for how RestaurantIQ is designed, built, operated, and where it's headed. Start with the [main README](../README.md) for the product overview and the story behind the project.
+Documentation for how RestaurantIQ is designed, operated, and improved. Start with the repository-root [README](../../README.md) for the product overview, engineering decisions, and local setup.
 
-## Design & architecture
+## Architecture and engineering
 
 | Doc | What's in it |
 |---|---|
-| [`schema.md`](schema.md) | Database design: three Mermaid ER diagrams (core data, sync infrastructure, AI features) plus the reasoning — why multi-tenancy lives in a column, why daily summaries exist alongside raw orders, why money is integer cents |
+| [`schema.md`](schema.md) | Database diagrams and the reasoning behind multi-tenancy, aggregates, sync state, and integer-cents money handling |
 | [`migrations.md`](migrations.md) | How the forward-only SQL migration system works and how to add a migration |
+| [`bugs.md`](bugs.md) | Notable failures, diagnoses, fixes, and the engineering lessons that followed |
+| [`sharp-edges.md`](sharp-edges.md) | Current implementation pitfalls distilled from the bug log |
 
-## Build history
+## Engineering case studies
+
+| Case study | Decision |
+|---|---|
+| [`distributed-sync.md`](case-studies/distributed-sync.md) | Leader election, per-integration locking, durable retries, and failure recovery |
+| [`financial-correctness.md`](case-studies/financial-correctness.md) | Integer-cents arithmetic, missing-cost semantics, fee allocation, and tenant-safe reads |
+| [`deterministic-ai-forecasting.md`](case-studies/deterministic-ai-forecasting.md) | Deterministic forecasting with an LLM limited to explanation |
+| [`tenant-isolation.md`](case-studies/tenant-isolation.md) | Central tenant resolution, route-level adversarial tests, and an RLS backstop |
+
+## Product and pilot readiness
 
 | Doc | What's in it |
 |---|---|
-| [`sprints-overview.md`](sprints-overview.md) | Running log of every sprint, A through U — 3–4 bullets each |
-| [`weekly-summary/`](weekly-summary/) | Deep-dive write-ups per sprint: what changed, why, and the patterns worth understanding |
-| [`bugs.md`](bugs.md) | 17 documented bugs — what broke, how it was diagnosed, the fix, and the lesson |
-| [`sharp-edges.md`](sharp-edges.md) | Canonical checklist of pitfalls distilled from the bug log — the doc every agent reads before touching code |
-| [`agent-teams-reference.md`](agent-teams-reference.md) | Reference guide for the Claude Code agent-team workflow this project is developed with (architect → build → security → QA → devops → teaching) |
+| [`known-limitations.md`](known-limitations.md) | Current data, product, testing, and operational constraints |
+| [`pilot-checklist.md`](pilot-checklist.md) | Go/no-go gates and onboarding steps for a small restaurant pilot |
+| [`competitive-landscape.md`](competitive-landscape.md) | Product positioning against Toast and the cross-source analytics gap |
 
-## Running it
+## Deployment and operations
 
 | Doc | What's in it |
 |---|---|
 | [`deployment.md`](deployment.md) | Railway + Vercel deployment guide: env vars, CORS wiring, build/start commands |
-| [`operations.md`](operations.md) | Backup, recovery, and disaster-recovery runbook — written so an on-call operator with no prior context can act |
+| [`operations.md`](operations.md) | Backup, recovery, and disaster-recovery runbook |
 
-## Toward real restaurants
+## Historical build record
 
 | Doc | What's in it |
 |---|---|
-| [`known-limitations.md`](known-limitations.md) | The honest gap list — what pilot restaurants should know before relying on the numbers |
-| [`pilot-checklist.md`](pilot-checklist.md) | Everything needed to onboard a pilot restaurant |
+| [`sprints-overview.md`](sprints-overview.md) | Concise history of what changed across the project's sprints |
+| [`archive/sprint-notes/`](archive/sprint-notes/) | Detailed historical sprint notes retained without remaining on the primary reading path |
+
+Internal development-tool references are intentionally excluded from this public documentation path.

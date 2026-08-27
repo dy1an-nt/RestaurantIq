@@ -237,25 +237,6 @@ If a user clicks Save and then navigates away (or the modal otherwise unmounts) 
 
 ---
 
-## What you should be able to explain in an interview
-
-**"You let users type money into a form. Walk me through how a dollar value becomes a stored integer, and what could go wrong."**
-The user types into a text field — say "12.50". On save, a `parseDollars` function trims it and runs it against a regex that allows at most two decimal places, so "12.555" is rejected outright with a message rather than silently rounded. Then it does `Math.round(dollars * 100)` — round, not truncate, because `12.50 * 100` in floating point can come out as `1249.9999`, and truncating would lose a cent. That integer goes to the server. The server doesn't trust any of that — it independently checks the value is a finite integer ≥ 0 and under a ceiling, because the client can be bypassed with curl. The cents are stored as an integer column. Money is integer cents everywhere; the only float in the whole path is that one multiply at the input box, and we round it away immediately.
-
-**"Why is a missing cost `null` instead of `0` in your system, and what breaks if you get that wrong?"**
-Because "I don't know this item's cost" and "this item is free" are different facts, and margin math conflates them catastrophically if you flatten them. If `null` becomes `0`, then profit equals price and every uncosted item reports a 100% margin — it floats to the top of the "most profitable" list, and the dashboard is lying. We had exactly this bug in a prior sprint. So `null` is carried end to end: it's a legal value in the column, the PATCH stores it as-is to let users clear a cost, the margins endpoint gates all computation behind a `cost_known` boolean, and the table renders it as a "Missing cost" badge, never `$0.00`.
-
-**"How do you stop one tenant from editing another tenant's menu item, given you've turned off Row-Level Security?"**
-Two independent guards. First, I pull the user id from the verified JWT — never from the request — and check that the restaurant in the URL actually belongs to that user; if not, 403. Second, even after that passes, the UPDATE itself is scoped `WHERE id = itemId AND restaurant_id = restaurantId`. So if someone passes an item id from a restaurant they don't own, the update matches zero rows, Supabase returns no row, and I send a 404. Either guard alone would mostly work; together they're defense in depth. The tradeoff of bypassing RLS is that this scoping is a code-review invariant rather than a database guarantee — miss one `.eq` and you leak — which is fine at our scale and would be revisited past a handful of tenants.
-
-**"Your edit endpoint only returns some of the fields the table displays. How do you update the UI without blanking the rest?"**
-The table rows carry analytics fields — 30-day revenue, order count, trend — that the PATCH doesn't return, because those are computed by a different (GET) endpoint. So on save I do a field-level merge: spread the existing row, then overwrite only name, category, and cost from the server response. That keeps the analytics intact and updates instantly without a refetch. And I never optimistically mutate before the request — the merge only runs on a successful response — so if the save fails there's literally nothing to roll back; the table just still shows the old values and the modal shows the error.
-
-**"Why validate on the server if you already validate in the browser?"**
-They serve different jobs. The browser validation is UX — instant feedback, no round trip, catches typos before they cost a request. The server validation is integrity — it's the actual trust boundary, because anyone can skip the browser and hit the endpoint directly with a token from devtools. If I only validated client-side, a single curl with `cost_cents: -1` or `"cost_cents": 12.5` would corrupt my money data. So the server independently checks type, finiteness, integer-ness, and range. The client is a convenience; the server is the contract.
-
----
-
 ## What to look up if you want to go deeper
 
 - **RFC 5789 (PATCH method for HTTP)** — the formal semantics of partial update, and why PATCH ≠ PUT. Our handler is a clean example: absent fields are untouched, present fields are validated and applied.

@@ -84,28 +84,6 @@ Ship a per-item, per-channel margin view that subtracts DoorDash's "delivery tax
 
 ---
 
-## What you should be able to explain in an interview
-
-**Q: Your delivery margins subtract a "delivery tax." Why is it a configured rate instead of DoorDash's real per-order fees?**
-Because we don't ingest the real fees. The DoorDash normalizers from an earlier sprint keep only order totals — per-order commission isn't in our database, so there's nothing to sum. Building a whole fee-ingestion pipeline is its own sprint, and for an MVP a single configurable commission rate plus a flat fee per order captures the dominant term: commission is ~20% and the owner knows their own deal. So I store `commission_bps` and `flat_fee_cents` per restaurant and apply them uniformly to delivery revenue. The page is labeled "true margin after commission," which is honest about what it is. The service takes those two values as arguments, so if we ingest real per-order fees later, that's the exact seam where they'd plug in — the math downstream doesn't change.
-
-**Q: DoorDash items come in with a zero cost. How do you keep that from producing fake 100% margins?**
-I treat `cost_cents === 0` exactly like `null` — both mean "cost unknown." Those items get excluded from all margin math and shown in a separate "Missing Cost" list. The reason zero is dangerous specifically on a margin page: if cost is zero, net equals gross, so the item shows 100% margin — a confident, flattering lie that would push the owner to over-promote a money-loser. A missing number is safer than a wrong one. It's the same "unknown cost is not $0" rule the costing features established, applied to the case where the unknown shows up as a literal zero instead of a null.
-
-**Q: Walk me through how you allocate the flat fee across items, and why a cent goes missing.**
-The total flat-fee burden is the per-order fee times the number of delivery orders. I split that across delivery items proportionally by each item's share of delivery gross revenue — `floor(totalBurden × itemGross / totalDeliveryGross)` for each. Because I floor every item's share, the pieces can sum to slightly less than the total — up to N−1 cents short for N items. I deliberately drop that remainder rather than assign it to some arbitrary item. The reason is determinism: same inputs, same output, byte for byte, which is what lets me unit-test the money math. And the summary reports the actually-allocated tax, not the theoretical total, so the page never claims a cent it didn't distribute. Flooring also means I never overstate the tax — I err toward a slightly rosier delivery margin, never a falsely worse one.
-
-**Q: `order_items` has no `restaurant_id`. How do you stop one tenant from reading another's order items?**
-I scope a parent table instead of the child. First I fetch the restaurant's orders — those *are* scoped by `restaurant_id` — and collect their ids. Then I fetch `order_items` filtered by `IN (those order ids)`. A tenant's order ids are never visible to another tenant's request, so there's no id I could pass into the second query that would reach another restaurant's items. Safety comes from the data flow rather than a WHERE clause on the child table. One wrinkle: Supabase's REST layer encodes every id from an `.in()` into the URL, and UUIDs are long, so with thousands of orders I'd blow the URL-length limit. So I chunk the ids 500 at a time and concatenate the results.
-
-**Q: Your settings PATCH rejects unknown fields. Why bother if you only read the two you care about?**
-It's mass-assignment protection. The route writes to a `restaurants` row. If I were sloppy and did `update(req.body)`, a body with an extra key like `user_id` could reassign the restaurant to someone else. I build the update object from only the two validated fields, so I'm safe on that front — but rejecting unknown keys outright is the loud version: it fails the request instead of silently ignoring the extra field, which tells an honest client they sent something wrong and denies a malicious one the chance to probe what fields exist. I also validate the two fields with `Number.isInteger` plus the same 0–5000 / 0–2000 bounds the database CHECK constraints enforce, so anything that passes the route can't be bounced by Postgres.
-
-**Q: You hit a React state-update-on-unmounted-component leak. What caused it and how'd you fix it?**
-The original code put the fetch in a `useCallback` that returned a cleanup function — but a `useCallback` doesn't run cleanups; only `useEffect` does. So after saving settings, the refetch had no real cancellation, and if you navigated away mid-refetch the promise resolved and called `setState` on an unmounted component. The fix was to give the fetch `useEffect` sole ownership of cancellation — it sets a `cancelled` flag and aborts an `AbortController` in its cleanup. Saving settings just increments a `refetchKey` that's in the effect's dependency array, so a save re-runs the effect, and re-running the effect fires the previous run's cleanup first. One owner for setup and teardown, instead of cancellation logic stranded in a callback that can never run it.
-
----
-
 ## What to look up if you want to go deeper
 
 - **IEEE-754 and why money isn't a float** — the classic "What Every Computer Scientist Should Know About Floating-Point Arithmetic" (Goldberg, 1991). The non-associativity of float addition is the concrete reason this whole codebase stores cents as integers.

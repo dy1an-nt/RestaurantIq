@@ -365,31 +365,6 @@ The `/status` health probe was registered after `router.use(authMiddleware)`, ma
 
 ---
 
-## What you should be able to explain in an interview
-
-**"Walk me through how you handle multi-tenant isolation when RLS is off."**
-Every protected route pulls `userId` from the verified JWT (`req.user.sub`) and adds `.eq('user_id', userId)` to every query that touches a tenant-owned row. Trust the JWT for identity, never trust the request body for ownership. The tradeoff: one missed `.eq` in a controller leaks across tenants. We accept that for now because we have a small, code-reviewed surface. Once we hit real scale, RLS goes back on.
-
-**"Why is delete-then-insert worse than upsert for rebuilding derived data?"**
-Atomicity. Delete and insert are two separate writes. If the process dies between them, you've permanently destroyed the data the delete removed. Upsert collapses replacement into one operation: if it fails, the old row is still there. The worst case is "summaries are slightly stale," not "summaries are gone."
-
-**"Why did you ditch the HS256 fallback in your auth middleware?"**
-It was a security hole, not a safety net. JWKS uses ES256 — asymmetric, Supabase's private key never leaves Supabase. HS256 is symmetric — anyone with the secret can forge tokens. The old middleware tried JWKS and on any failure fell back to HS256. An attacker who could disrupt JWKS could force every request through the weaker path. We now detect mode once, lazily after env vars load, and lock it. JWKS-mode never falls back.
-
-**"Explain the IV and the auth tag in AES-GCM."**
-The IV is a 12-byte random nonce generated fresh for every encryption. It mixes into the keystream so encrypting the same plaintext twice produces different ciphertext. Without it, identical inputs produce identical ciphertexts and an attacker watching the database can match them up. The auth tag is a 16-byte MAC computed over the ciphertext during encryption. On decrypt, GCM recomputes it and compares — a mismatch means the ciphertext was tampered with and decryption fails. The IV prevents correlation; the auth tag provides integrity. Both must be stored alongside the ciphertext.
-
-**"What's an N+1 query and how did you eliminate it in the order sync?"**
-N+1 is when you do one query to get a list, then one query per item. Our `upsertOrders` did three queries per order — SELECT to dedup, INSERT for the order, INSERT for line items. For 200 orders: 600 round trips. We rewrote it to three total queries: one bulk SELECT for dedup, one bulk INSERT for orders, one bulk INSERT for line items. Sync time dropped from tens of seconds to under one.
-
-**"You found a bug where every uncosted item showed 100% margin. What was the fix?"**
-`cost ?? 0` substituted zero for null, and `(price - 0) / price = 100%`. Every uncosted item looked like a perfect-margin item. The fix was an explicit `cost_known` boolean — only compute margin when it's true; uncosted items don't enter classification. The general lesson: `null` is not `0`. Collapsing missing into zero is misleading for ratios and profitability math.
-
-**"Why does PostgREST return embedded relations as arrays even for many-to-one FKs?"**
-Consistency — the JSON shape is uniform whether you embed a many-to-one or a one-to-many. The tradeoff is an `?.[0]` unwrap for many-to-one cases. Predictable beats clever.
-
----
-
 ## Things punted (track these)
 
 - **Square refresh-token rotation.** Tokens are encrypted at rest but expire after 30 days. No refresh flow yet — operators must re-paste tokens manually.

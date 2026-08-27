@@ -1,6 +1,6 @@
 # Week 3 — Square Integration, Real Auth, Live Dashboard
 
-> Teaching summary. Read it once now to lock in what you built; read it again before any interview where you might describe this project.
+> Teaching summary. Read it once now to lock in what you built.
 
 ---
 
@@ -130,30 +130,6 @@ The JWKS URL is computed on first request, not at module load. This pattern is u
 
 ### Pre-aggregation for read performance
 We don't compute 30-day revenue from raw `orders` on every dashboard page load. We pre-compute into `daily_summaries` once after each sync. Read queries become a `SUM` over ~30 small rows instead of potentially thousands. **Tradeoff:** writes are more complex and summaries can drift if a sync fails partway through.
-
----
-
-## What you should be able to explain in an interview
-
-After this sprint, you should be able to walk through any of these in 60–90 seconds without notes:
-
-1. **"How does your authentication work?"**
-   *"The frontend signs in via Supabase, gets a JWT. Every API request sends it as a Bearer token. The Express middleware grabs the project's public keys from Supabase's JWKS endpoint, verifies the JWT signature with `jose`, and attaches the decoded payload to `req.user` if it's valid. We also support legacy HS256 secrets as a fallback."*
-
-2. **"Why JWKS instead of a shared secret?"**
-   *"Asymmetric signing means only the auth server has the private key. The verifier only needs the public key, which is safe to expose. If Supabase rotates keys, JWKS reflects the change without redeploying. With a shared secret, key rotation is a coordinated outage."*
-
-3. **"Walk me through the Square sync."**
-   *"Express route → service. Service loads the restaurant's Square credentials, instantiates a Square client, paginates through Catalog API. Each item goes through a pure normalizer that maps Square's shape onto our `menu_items` row shape. We upsert by name (until we add a unique index on `external_id`). Same flow for Orders. Then we recompute `daily_summaries` for the last 30 days from raw orders."*
-
-4. **"Why do you store money as integers?"**
-   *"Floating-point arithmetic isn't associative — summing many small floats produces drift. Storing cents as integers gives you exact arithmetic. Postgres's `integer` type holds up to ~21 million dollars in cents, which is well past anything we'd see per-row."*
-
-5. **"What's pre-aggregation and why use it here?"**
-   *"Instead of computing revenue from raw orders on every read, we compute it once per day per item into a `daily_summaries` table. Reads become tiny range scans. The cost is making sure summaries stay correct — we rebuild the trailing 30-day window after each sync."*
-
-6. **"What's the dev-environment proxy for?"**
-   *"Frontend's on 5173, backend's on 3001. Cross-origin without CORS headers gets blocked. The Vite proxy forwards `/api/*` server-side so the browser only ever sees same-origin requests. Production uses a single domain so the issue disappears."*
 
 ---
 

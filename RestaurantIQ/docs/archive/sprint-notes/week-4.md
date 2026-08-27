@@ -1,6 +1,6 @@
 # Week 4 — AI Insights Dashboard + Deterministic Alerts Engine
 
-> Teaching summary. Read it once now to lock in what you built; read it again before any interview where you might describe this project.
+> Teaching summary. Read it once now to lock in what you built.
 
 ---
 
@@ -156,33 +156,6 @@ Splitting 14 days into "this week (0–6)" and "prior week (7–13)" and diffing
 
 ### Two-tier rules (LLM vs deterministic)
 Insights use Claude — they need to *write English a human enjoys reading* about patterns the system hasn't been told to look for. Alerts are rule-based — operators need to trust them ("why did this fire?" → "look at the rule"). Mixing the two creates the worst of both: opaque alerts you can't trust, and rote insights that don't say anything new. Picking the right tool per problem is the meta-skill.
-
----
-
-## What you should be able to explain in an interview
-
-After this sprint, you should be able to walk through any of these in 60–90 seconds without notes.
-
-1. **"Walk me through your alerts engine."**
-   *"After every Square sync, the backend pulls 14 days of per-item summaries — that table's pre-aggregated, so the read is cheap — and splits them into two non-overlapping 7-day windows. A pure function evaluates three rules: zero current sales after meaningful prior sales, more than 20% week-over-week revenue decline, and breaking into the current top 3 from outside. Each rule has a noise floor in cents so a $0.05 test order doesn't fire alerts. Candidates get stamped with a dedup key — type, menu item, and the Monday of the current UTC week — and we upsert with `ON CONFLICT DO NOTHING` against a unique index. So the same alert can't fire twice in a week, and concurrent syncs can't race past the check."*
-
-2. **"Why a discriminated union instead of `loading` and `error` flags?"**
-   *"With three independent flags you can encode states that should be impossible — loading and error both true, for instance. A discriminated union ties optional fields to the variant they belong to: `state.message` only exists when `state.status === 'error'`, and the compiler enforces that. The render block becomes four exhaustive branches. It's not just neater; it removes a whole class of bugs at the type level."*
-
-3. **"How does optimistic UI update work in your alerts page, and when would you not use it?"**
-   *"When the user clicks Mark Read, I update local state to `is_read: true` synchronously, then fire the POST. The user sees the change instantly. I'd only do this for operations that are safe to retry and where the failure mode is benign — marking as read, dismissing a banner. I would not do it for irreversible operations like deletion, payment, or anything where the user needs to see confirmation that the server agreed."*
-
-4. **"Why two layers of deduplication?"**
-   *"The in-memory check is a TOCTOU race waiting to happen — between the time I read the existing alerts and the time I insert, another sync could have inserted the same row. The unique index plus `ON CONFLICT DO NOTHING` is the real guarantee. The in-memory check is just an optimization to avoid generating obviously-redundant insert payloads."*
-
-5. **"Why didn't you use floats for the 20% threshold?"**
-   *"Two reasons. One, IEEE-754 floats don't represent 0.8 exactly, so on edge inputs you'd get inconsistent classifications. Two, multiplying out to `5 * current < 4 * prior` is just integer arithmetic — same answer, no rounding, easier to reason about. I only convert to floats for the display string, where a single-pixel rounding error in the percentage label is irrelevant."*
-
-6. **"What's the difference between your insights and your alerts, and why use Claude for one and not the other?"**
-   *"Alerts are deterministic rules an operator can audit — if it fires, you can point at the threshold that triggered. Insights are recommendations written in natural language about patterns the system wasn't pre-programmed to look for, which is exactly what an LLM is good at. You can't audit an LLM the same way, so you don't put it in the path of anything where the user needs to trust the explanation."*
-
-7. **"How do you protect against one tenant reading or modifying another tenant's data?"**
-   *"Every protected route runs JWT middleware that puts the user's sub on `req.user`. Then every query joins through `restaurants.user_id` to derive the `restaurant_id` — the client never supplies it. For routes that take a resource ID like `POST /alerts/:id/read`, I fetch the row first, compare its `restaurant_id` to the resolved one, and return 403 on mismatch. There's no RLS at the database — that's a known tradeoff for prototyping speed, and the code-level enforcement means every new route is a new place to get this wrong. When we get past a handful of tenants we'll switch to RLS."*
 
 ---
 

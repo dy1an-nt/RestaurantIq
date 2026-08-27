@@ -132,28 +132,6 @@ Ship two AI-powered features that differentiate RestaurantIQ from generic analyt
 
 ---
 
-## What you should be able to explain in an interview
-
-**Q: Your advisor page does a forecast. Why did you write the statistics in TypeScript instead of asking the LLM to project the numbers?**
-Three reasons. Determinism — same inputs, same numbers, always; LLMs give different prose on every call but I never want different *units*. Cost — token-priced arithmetic is the most expensive calculator ever built, and I'm paying every refresh. And honesty — I wrote explicit rules for what "low confidence" means and when we refuse to forecast at all. An LLM is happy to confabulate confidence in a way that hides how thin the sample is. So the function does the math — linear regression slope on a moving-average baseline, clamped ±50% — and Claude only writes the narrative on finished numbers. The pure function is testable with normal unit tests.
-
-**Q: You cap chat context at 8 turns. How did you pick that, and what breaks?**
-8 is ~4 user/assistant pairs, enough for the follow-ups owners actually do ("why?", "compare to last week"). Below it, multi-turn breaks. Above it, cost scales linearly with conversation length, on top of a 5–15 KB data context blob I'm already attaching per turn. The model is told to lean on recent history rather than re-ask for context. Honest limitation: messages older than 8 turns are invisible to it. The right fix when that hurts is summarization — compact older turns into one sentence — not sending everything.
-
-**Q: Why does the forecast refuse to project items with fewer than 14 days of history?**
-14 days captures a full weekly cycle plus a second repeat — long enough for day-of-week patterns to register and for a slope estimate to be more than fitting noise. Below that I'm projecting from random points. Owners use these numbers to order food; a confident "sell 60 next week" from 5 data points would be worse than saying nothing. So I exclude under-14-days items and surface them separately with "X days of data (need 14+)". Above 14, I tier confidence — low/medium/high at 14/21/28 — so the user has a calibrated read on how much to trust each row.
-
-**Q: Your projections are clamped to ±50% of last week's actuals. Why?**
-Naive linear regression on 28 days has no sanity check. One viral Saturday plus a normal Sunday produces a slope that extrapolates to "sell 240 burgers next week" when last week was 60. Owners use these numbers for food orders; a bad-high projection is spoiled inventory, a bad-low is a stockout. The clamp acknowledges that last week's actuals are the strongest prior we have. If demand really does shift, next week's refresh widens the band because last-7d-actual will be higher. The tradeoff: real shocks get smoothed for one cycle. That's the right call — the worst failure mode of an unbounded projection is far more expensive than a one-cycle lag.
-
-**Q: First deploy — what did you have to learn the hard way?**
-Three small files and one dashboard setting. Railway's Nixpacks defaults skip devDeps on install; `typescript` is a devDep, so `tsc: not found` and the build fails — fixed with a `nixpacks.toml` that explicitly says "run `npm ci` then build." The Railway root directory had to point at `RestaurantIQ/restaurantiq-backend`, not the monorepo root. A Vercel SPA needs a rewrite rule so direct navigations to `/chat` don't 404 — Vercel looks for a file at that path, finds none, serves 404; the rewrite says "serve `index.html` for any path and let React Router decide." And `VITE_API_URL` had to be set on Vercel pointing at the Railway URL; otherwise the bundled JS used the `localhost:3001` fallback and every API call failed in production.
-
-**Q: You shipped a bug — white screen after the loading indicator. What was it?**
-Mismatched property names across a service-to-route-to-frontend boundary. The chat service returned `{ assistantMessage, usage }`. The route passed that object directly as the response `data`. The frontend expected `{ message, usage }` — same shape as every other endpoint. `message` was `undefined`, it got pushed into the messages array, and the renderer crashed trying to read `.role` off `undefined`. Fix was a one-liner rename at the route boundary. The lesson: service-internal types and wire format types should have separate names with an explicit translation step. Returning service results directly couples the API to whatever the implementer happened to name a variable that day.
-
----
-
 ## What to look up if you want to go deeper
 
 - **Anthropic tool use and prompt caching** — `docs.anthropic.com`. The 1024-token minimum for caching and the ~10% cached-input price ratio are documented there.

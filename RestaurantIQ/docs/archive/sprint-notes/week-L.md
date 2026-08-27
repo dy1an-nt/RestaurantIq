@@ -81,23 +81,6 @@ Adds a per-provider "Sync health" block inside each `IntegrationCard`: a status 
 - **The timeout race pattern.** `Promise.race([work, rejectAfter(ms)])` bounds an operation that has no native timeout. The loser keeps running in the background, but our caller has moved on and released the lock — which is exactly why the bound matters here.
 - **Graceful degradation in the read path.** `syncStatus.ts` and the frontend both render sensible defaults when a status row / poll is missing, so observability never hard-fails.
 
-## What you should be able to explain in an interview
-
-**Q: How do you stop two syncs from running for the same restaurant at the same time?**
-We use the database row itself as a mutex. There's a `locked_at` column on `integration_sync_status`, one row per restaurant-and-provider. To start a sync you run a single conditional `UPDATE` that sets `locked_at = now()` but only `WHERE locked_at IS NULL OR locked_at < a stale cutoff`, with a `RETURNING id`. Postgres serializes two writers hitting the same row, so the second one re-checks its `WHERE` after the first commits, finds the row locked, and gets back zero rows — meaning it didn't acquire the lock and won't ingest. The nice thing is the check and the set are the same atomic statement, so there's no race window. And because it lives in the DB, it holds across process restarts and even between a scheduled run and someone clicking the manual button.
-
-**Q: What happens if a sync crashes while holding the lock?**
-Two layers. First, every ingest runs inside a `Promise.race` against a 90-second timeout, and the lock is released in a `finally`-style path on both success and failure — so a hang releases the lock in under two minutes. Second, even for a hard process crash where no code runs, the acquire query treats any lock older than 10 minutes as stale and reclaimable, so the integration can never wedge permanently.
-
-**Q: One restaurant's integration throws an exception during a scheduled tick. What happens to the others?**
-Nothing — they all still run. The tick fans out with `Promise.allSettled`, not `Promise.all`, so a rejection doesn't short-circuit the batch. On top of that, `syncIntegration` catches its own errors and records them to the status table instead of throwing, so the failure becomes a `failed` row, not an exception. We have a test that fails restaurant r1 and asserts r2 still succeeds and both were attempted.
-
-**Q: Why a separate table instead of just adding `last_synced_at` to the restaurants table?**
-Because the data is per provider, not per restaurant. With columns I'd be adding several columns for every new integration I ever support, and I'd be putting transient stuff like the lock flag on the restaurant's identity row. A child table keyed on `(restaurant_id, provider)` makes a new provider just a new row value, and gives the lock column a natural home. It also keeps the restaurants row narrow.
-
-**Q: Why does the manual "Run sync" button go through the scheduler now?**
-So there's exactly one code path that pulls data, and therefore exactly one place the lock is enforced. If manual sync had its own inline ingest, that's a second path where I could forget the lock and let a user double-trigger work that's already running. Now a manual press just calls the same `syncIntegration`, and if a scheduled run already holds the lock the route returns a 409 instead of duplicating it.
-
 ## What to look up if you want to go deeper
 
 - **Postgres advisory locks** — `pg_advisory_lock` / `pg_try_advisory_xact_lock`. A lighter-weight, application-defined lock that doesn't need a row; worth comparing against our row-based approach.

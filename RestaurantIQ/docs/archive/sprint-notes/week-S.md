@@ -118,13 +118,13 @@ Run on the pilot/sandbox environment after deploy. All should pass; none should 
 ## 4. Pilot readiness
 
 Deliverables for running the pilot live in:
-- [`pilot-checklist.md`](../pilot-checklist.md) — go/no-go gates, env config,
+- [`pilot-checklist.md`](../../pilot-checklist.md) — go/no-go gates, env config,
   migrations, monitoring, backup/restore drill, rollback, per-restaurant
   onboarding, and the **feedback collection process**.
-- [`known-limitations.md`](../known-limitations.md) — honest current limitations to
+- [`known-limitations.md`](../../known-limitations.md) — honest current limitations to
   set expectations with pilot owners.
-- Deployment + env reference verified against [`deployment.md`](../deployment.md)
-  and [`operations.md`](../operations.md) (both current; not duplicated).
+- Deployment + env reference verified against [`deployment.md`](../../deployment.md)
+  and [`operations.md`](../../operations.md) (both current; not duplicated).
 
 ---
 
@@ -138,7 +138,7 @@ Deliverables for running the pilot live in:
 - `lib/useDevMode.ts` — localStorage dev-mode flag (reactive across the app + tabs).
 
 ### New (docs)
-- `docs/pilot-checklist.md`, `docs/known-limitations.md`, `docs/weekly-summary/week-S.md`.
+- `docs/pilot-checklist.md`, `docs/known-limitations.md`, and this archived sprint note.
 
 ### Modified (frontend)
 - `App.tsx` — Margins/Settings routes, channel-margins redirect, skip link + main landmark.
