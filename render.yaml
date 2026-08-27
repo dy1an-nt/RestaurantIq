@@ -1,0 +1,69 @@
+# Render Blueprint for the RestaurantIQ backend.
+#
+# The frontend stays on Vercel; this covers the Express API only. Create it with
+# Render Dashboard -> New -> Blueprint, pointed at this repository. Render
+# prompts for every `sync: false` value during that first creation flow and
+# never again, so later additions go in the service's Environment tab.
+#
+# Free plan notes that matter for this service:
+#   - Free web services spin down after 15 minutes without a request and take
+#     about a minute to wake. The sync scheduler does not run while asleep, so
+#     the Uptime workflow's 5-minute /health probe is what keeps syncs firing.
+#     Setting HEALTH_URL is therefore functional here, not just monitoring.
+#   - 750 free instance hours per workspace per month. Kept awake continuously
+#     this service uses roughly 730, so it fits, with no room for a second.
+services:
+  - name: restaurantiq-backend
+    type: web
+    runtime: node
+    plan: free
+    rootDir: RestaurantIQ/restaurantiq-backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    # Matches the top-level route in src/server.ts. Render also uses this to
+    # decide a deploy is live.
+    healthCheckPath: /health
+    envVars:
+      # 22 is the engines pin in both package.jsons and what CI runs.
+      - key: NODE_VERSION
+        value: "22"
+      # Turns on the production hardening in config/env.ts: strict CORS, rate
+      # limiting, JSON logs, and no stack traces in responses. Also makes a
+      # token encryption key mandatory at boot.
+      - key: NODE_ENV
+        value: production
+      # Render injects PORT itself; src/server.ts reads it. Do not set it here.
+
+      # --- Required. Boot fails without these. ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # 64 hex chars: openssl rand -hex 32
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      # Comma-separated origins. The deployed Vercel URL goes here or CORS
+      # rejects the frontend.
+      - key: FRONTEND_URL
+        sync: false
+
+      # --- Scheduler. Omit and this instance is sole leader, which is correct
+      # on the free plan since it runs a single instance. ---
+      - key: DATABASE_URL
+        sync: false
+
+      # --- Integrations. Only needed once a real merchant is connected. ---
+      - key: SQUARE_ENVIRONMENT
+        value: production
+      - key: SQUARE_ACCESS_TOKEN
+        sync: false
+      - key: SQUARE_LOCATION_ID
+        sync: false
+
+      # --- Error tracking. Leave the DSN unset and Sentry stays inert. ---
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
