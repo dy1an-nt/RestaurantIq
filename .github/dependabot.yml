@@ -1,0 +1,31 @@
+# Automated dependency updates. Without this, the CI `npm audit` gate is the
+# first (and only) place a vulnerable dependency surfaces, usually by turning
+# an unrelated PR red. Dependabot raises the bump proactively instead.
+#
+# Weekly, grouped per package so a quiet week produces at most three PRs
+# (backend deps, frontend deps, actions) rather than one PR per package.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /RestaurantIQ/restaurantiq-backend
+    schedule:
+      interval: weekly
+    groups:
+      backend-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /RestaurantIQ/restaurantiq-frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
