@@ -18,7 +18,11 @@ services:
     runtime: node
     plan: free
     rootDir: RestaurantIQ/restaurantiq-backend
-    buildCommand: npm ci && npm run build
+    # --include=dev is required, not optional. NODE_ENV=production is set
+    # below and Render applies env vars during the build, which makes npm omit
+    # devDependencies. typescript is one, so a plain `npm ci` leaves no tsc and
+    # the build fails with "tsc: not found".
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     # Matches the top-level route in src/server.ts. Render also uses this to
     # decide a deploy is live.
@@ -55,8 +59,9 @@ services:
         sync: false
 
       # --- Integrations. Only needed once a real merchant is connected. ---
+      # Switch to production once a real merchant is connected.
       - key: SQUARE_ENVIRONMENT
-        value: production
+        value: sandbox
       - key: SQUARE_ACCESS_TOKEN
         sync: false
       - key: SQUARE_LOCATION_ID
