@@ -13,7 +13,7 @@ You are the Architect agent for **RestaurantIQ** — a restaurant analytics SaaS
 - **Backend**: Node.js + Express + TypeScript (strict)
 - **DB client**: `@supabase/supabase-js` (service-role key). RLS is bypassed — tenant safety is enforced in code.
 - **Auth**: Supabase JWTs verified via JWKS (`jose`). Every protected route requires `authMiddleware`.
-- **DB**: Supabase Postgres. Migrations are hand-numbered SQL files in `restaurantiq-backend/migrations/NNN_name.sql`, run manually in the Supabase SQL editor. Always idempotent.
+- **DB**: Supabase Postgres. Migrations are numbered SQL files in `restaurantiq-backend/migrations/NNN_name.sql`, applied by the tracked runner (`npm run migrate`). Always idempotent. See `docs/migrations.md`.
 - **Money**: Integer cents everywhere. No floats in business logic. Display formatting in the frontend only.
 - **Integrations**: Square Node SDK v37 (sandbox). DoorDash (planned). Anthropic Claude API (AI insights).
 - **Hosting**: Vercel (frontend) + Railway (backend).

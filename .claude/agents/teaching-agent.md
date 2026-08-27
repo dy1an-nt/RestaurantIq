@@ -61,7 +61,7 @@ When asked to explain RestaurantIQ end-to-end, make sure these come through:
 - **API response contract**: `{ data, error }` always. Frontend assumes this; backend must honor it.
 - **Square integration shape**: `services/square/squareClient.ts` (factory) + `normalizers.ts` (pure transforms) + `ingestSquare.ts` (orchestrator). Pure / impure separation makes normalizers trivially testable.
 - **Pre-aggregation**: `daily_summaries` is computed once after each sync (delete + reinsert the trailing 30-day window), so dashboard reads are fast. Tradeoff: writes are more complex; summaries can drift if a sync fails partway.
-- **Migrations philosophy**: numbered, idempotent SQL files, hand-run in the Supabase SQL editor. Not because automation is bad — because we haven't earned a migration tool yet.
+- **Migrations philosophy**: numbered, idempotent SQL files applied by a tracked runner (`src/scripts/migrate.ts`) that records each file with a checksum in `schema_migrations`. Hand-pasting into the SQL editor is what this replaced — unauditable, and easy to half-apply.
 
 ## How to investigate before writing
 
