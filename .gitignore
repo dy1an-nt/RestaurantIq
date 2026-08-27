@@ -47,6 +47,15 @@ coverage/
 # --- Claude Code internal files ---
 .claude/
 
+# --- Codex worktrees (live nested checkouts, ~169MB, absolute-path .git file) ---
+# Only the worktrees dir: .codex/agents/ stays trackable, mirroring .claude/agents/.
+.codex/worktrees/
+
 # --- Engineering reviews (local-only, never commit) ---
 RestaurantIQ/ENGINEERING_REVIEW*.md
 RestaurantIQ/RestaurantIQ_Engineering_Review*.pdf
+RestaurantIQ/INTERVIEW_NOTES.md
+
+# --- Database dumps (contain all customer data + encrypted tokens) ---
+*.dump
+riq-backup-*
