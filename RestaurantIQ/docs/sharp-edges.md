@@ -13,6 +13,12 @@ rather than to an agent definition. Agent files must point here, not copy from h
 - **Frontend env vars** must be prefixed `VITE_` and declared in `src/vite-env.d.ts`,
   or Vite won't expose them / TypeScript won't compile.
 - **Vite proxy**: dev-server `/api/*` calls fail unless `vite.config.ts` proxies to `:3001`.
+- **Observability SDKs capture credentials by default.** Anything that auto-attaches
+  request context (Sentry and friends) will ship the onboarding request body —
+  which carries a Square access token — plus the `Authorization` header, to a
+  third party. Strip structurally (drop the body, allowlist headers) *and*
+  pattern-scrub the event; predicting every field that could hold a secret does
+  not work. See `src/config/sentryScrub.ts`.
 
 ## Supabase / PostgREST
 
@@ -48,6 +54,10 @@ rather than to an agent definition. Agent files must point here, not copy from h
 
 ## React / frontend
 
+- **A stock-photo license does not clear embedded third-party rights.** Before using an
+  image in commercial marketing, inspect the final crop for venue names, trademarks,
+  recognizable artwork, and identifiable people. Avoid visuals that could imply an
+  endorsement even when the image itself is free to use (bug #18 in `bugs.md`).
 - **StrictMode double-runs effects** in dev. Every async `useEffect` needs a `cancelled`
   flag checked before `setState`, cleared in cleanup.
 - **Stale closures in contexts.** `useCallback`/`useEffect` deps must include `session`
