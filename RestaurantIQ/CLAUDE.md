@@ -25,8 +25,8 @@ Restaurant analytics and marketing SaaS. Syncs with POS systems (Square) and del
 
 These rules encode how the strongest sessions on this project worked, written down
 as procedure so quality does not depend on which model runs the session. They bind
-the **main session** as much as any subagent. Follow them mechanically — especially
-when a step feels unnecessary; that feeling is exactly what they exist to override.
+the **main session** as much as any subagent. Follow them mechanically, especially
+when a step feels unnecessary. That feeling is exactly what they exist to override.
 
 ### Before the first edit of a session
 
@@ -48,23 +48,24 @@ when a step feels unnecessary; that feeling is exactly what they exist to overri
 ### Scope
 
 - Smallest diff that solves the stated problem. No drive-by refactors, renames,
-  formatting churn, or "while I'm here" fixes — list those as suggestions instead.
+  formatting churn, or "while I'm here" fixes. List those as suggestions instead.
 - If a second bug surfaces mid-task, report it; don't silently expand the diff.
 
 ### Hard gates before claiming done
 
 Work is not done until every line below is true. If a gate failed or couldn't run,
-the summary must say so explicitly — "should work" is a banned phrase.
+the summary must say so explicitly. "Should work" is a banned phrase.
 
 1. `npx tsc --noEmit` exits 0 in every package touched
    (`restaurantiq-backend/`, `restaurantiq-frontend/`).
-2. The changed flow was **exercised, not just compiled** — hit the endpoint with
-   `curl`, load the page — or the summary states exactly what wasn't run and why.
+2. The changed flow was **exercised, not just compiled**: hit the endpoint with
+   `curl`, load the page. If it wasn't run, the summary states exactly what
+   wasn't run and why.
 3. The full diff was re-read top to bottom after the last edit.
 4. Invariants re-checked against the diff: tenant scoping present, `{ data, error }`
    shape intact, money still integer cents, any migration numbered + idempotent.
 5. If manual SQL must be run in the Supabase SQL editor, the summary says so in its
-   own paragraph — every time, even if mentioned earlier.
+   own paragraph, every time, even if mentioned earlier.
 
 ### Reporting
 
@@ -111,22 +112,22 @@ alerts
 
 Seven specialized agents per sprint (architect → backend + frontend → security →
 QA → devops → teaching), orchestrated from the main session as the message bus.
-The full playbook — agent roles, goal formats, workflow order, and the
-orchestration protocol (self-contained prompts, contracts pasted verbatim, tsc
-gate before QA, findings loop, close-out) — lives in the **`/sprint` skill**
-(repo-root `.claude/skills/sprint/SKILL.md`). Invoke that skill before launching
-any sprint; never run a sprint from memory of it. Agent definitions live in
-`.claude/agents/`. Migration authoring/applying procedure is the **`/migrate`
-skill** (backed by `docs/migrations.md`).
+The full playbook lives in the **`/sprint` skill** (repo-root
+`.claude/skills/sprint/SKILL.md`). It covers agent roles, goal formats, workflow
+order, and the orchestration protocol (self-contained prompts, contracts pasted
+verbatim, tsc gate before QA, findings loop, close-out). Invoke that skill
+before launching any sprint; never run a sprint from memory of it. Agent
+definitions live in `.claude/agents/`. Migration authoring/applying procedure is
+the **`/migrate` skill** (backed by `docs/migrations.md`).
 
 ### Lightweight path for small fixes
 
 The full pipeline is for sprints. For single-file bug fixes, doc updates, and
-small refactors, work **directly in the main session — no subagents** — holding
-yourself to the Operating Discipline gates above plus the invariants in the
-relevant build agent's definition (`.claude/agents/backend-agent.md` /
+small refactors, work **directly in the main session, with no subagents**,
+holding yourself to the Operating Discipline gates above plus the invariants in
+the relevant build agent's definition (`.claude/agents/backend-agent.md` /
 `frontend-agent.md`). The QA spot-check is also yours: run the **`/qa-sweep`
-skill** (the QA agent's grep sweep — `console.log`, float math on money,
+skill** (the QA agent's grep sweep: `console.log`, float math on money,
 `req.user` scoping, `useEffect` cancellation) over what you touched before
 calling it done. Spawning agents costs real usage; spend it where isolation or
 an adversarial second reader actually adds something. One exception is not
@@ -138,7 +139,8 @@ real `qa-agent` security pass regardless of size.
 - All monetary values stored and passed as cents (integers), formatted for display only
 - API responses: `{ data: ..., error: null }` or `{ data: null, error: "message" }`
 - restaurantId always required on protected routes (no multi-tenant leakage)
-- Tailwind only — no custom CSS files
+- Tailwind only, no custom CSS files
 - Recharts for all data visualizations
 - No console.log in committed code
-- Known pitfalls live in `docs/sharp-edges.md` (canonical) with full war stories in `docs/bugs.md` — new pattern-level bugs get recorded there, not in agent definitions
+- No em dashes in any prose written for this repo: docs, README, commit messages, PR descriptions, code comments, and user-facing copy. Use a period or a comma. Parentheses and en dashes are not a workaround; if a thought needs separation, end the sentence. The `/unslop` skill carries the full prose rules
+- Known pitfalls live in `docs/sharp-edges.md` (canonical) with full war stories in `docs/bugs.md`. New pattern-level bugs get recorded there, not in agent definitions
