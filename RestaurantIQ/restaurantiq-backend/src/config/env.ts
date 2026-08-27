@@ -15,7 +15,7 @@ dotenv.config();
  *
  * Note on auth: this project verifies Supabase JWTs via JWKS, which only needs
  * SUPABASE_URL. SUPABASE_JWT_SECRET is the HS256 fallback and is therefore
- * optional. There is no separate app-level "JWT_SECRET" — Supabase issues and
+ * optional. There is no separate app-level "JWT_SECRET" - Supabase issues and
  * signs the tokens.
  */
 // 64 hex chars = 32 bytes, the AES-256 key length lib/tokenCrypto.ts requires.
@@ -72,9 +72,21 @@ const envSchema = z.object({
     )
     .optional(),
 
+  // --- Error tracking (optional: absent DSN disables Sentry entirely) -------
+  // Without SENTRY_DSN the Sentry module is inert - no init, no network calls.
+  // That is the intended state for development and tests. See config/sentry.ts.
+  SENTRY_DSN: z.string().url('SENTRY_DSN must be a valid URL').optional(),
+  // Defaults to NODE_ENV. Set explicitly to separate e.g. staging from prod
+  // when both run with NODE_ENV=production.
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  // Performance tracing sample rate, 0..1. Defaults to 0 (errors only) because
+  // tracing costs quota and this project inits Sentry after module load, which
+  // makes span coverage partial anyway.
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+
   // --- Distributed scheduler (optional: single-instance fallback) -----------
   // Recommended in production when running >1 backend instance so leader
-  // election can use a Postgres advisory lock. Unset → this instance is the
+  // election can use a Postgres advisory lock. Unset -> this instance is the
   // sole leader (fine for single-instance / dev).
   DATABASE_URL: z.string().optional(),
 }).superRefine((env, ctx) => {
@@ -87,7 +99,7 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['TOKEN_ENCRYPTION_KEY'],
       message:
-        'required in production (or set ACTIVE_TOKEN_ENCRYPTION_KEY) — ' +
+        'required in production (or set ACTIVE_TOKEN_ENCRYPTION_KEY) - ' +
         'integration tokens cannot be stored or read without it',
     });
   }
