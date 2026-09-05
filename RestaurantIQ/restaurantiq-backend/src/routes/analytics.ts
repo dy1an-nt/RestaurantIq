@@ -4,7 +4,7 @@ import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
 import { requireRestaurant } from '../middleware/requireRestaurant';
 import { validateBody, validateQuery } from '../middleware/validate';
-import { resolveWindow, windowQuerySchema } from '../lib/analyticsWindow';
+import { resolveWindow, windowQuerySchema, WindowQuery } from '../lib/analyticsWindow';
 import { analyzeMargins, MarginAnalysisError } from '../services/marginAnalysisService';
 import {
   analyzeChannelMargins,
@@ -102,7 +102,7 @@ router.get(
   // by however long the handler took to run between the two reads.
   const now = new Date();
   const { days, from, to, fromIso } = resolveWindow(
-    (req.query as unknown as { days: 7 | 30 | 90 }).days,
+    (req.validatedQuery as WindowQuery).days,
     now,
   );
   const nowIso = now.toISOString();

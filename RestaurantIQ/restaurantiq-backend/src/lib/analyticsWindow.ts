@@ -27,6 +27,9 @@ export const windowQuerySchema = z
   })
   .strict();
 
+/** Parsed shape of the dashboard query string, as validateQuery produces it. */
+export type WindowQuery = z.infer<typeof windowQuerySchema>;
+
 export interface ResolvedWindow {
   /** The resolved window size in days (echoes the default when omitted). */
   days: WindowDays;

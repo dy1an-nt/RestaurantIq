@@ -44,8 +44,14 @@ export function validateBody(schema: ZodTypeAny) {
  * here should use z.coerce for numeric/boolean fields and `.strict()` to
  * reject unknown keys rather than silently ignoring a typo'd param.
  *
- * On success, `req.query` is REPLACED with the parsed result so the handler
- * only ever sees validated, coerced values.
+ * On success the parsed result is attached to `req.validatedQuery`, and
+ * `req.query` is left alone. This differs from validateBody, which does
+ * overwrite `req.body`, and the asymmetry is deliberate: in Express 5
+ * `req.query` becomes a getter-only property, so assigning to it throws a
+ * TypeError. `req.body` stays an ordinary writable property, so validateBody
+ * is unaffected. Handlers must read `req.validatedQuery` and cast it to the
+ * schema's inferred type; reading raw `req.query` in a validated handler
+ * bypasses coercion and unknown-key rejection.
  */
 export function validateQuery(schema: ZodTypeAny) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -54,7 +60,7 @@ export function validateQuery(schema: ZodTypeAny) {
       res.status(400).json({ data: null, error: formatIssues(result.error) });
       return;
     }
-    req.query = result.data;
+    req.validatedQuery = result.data;
     next();
   };
 }

@@ -247,6 +247,34 @@ working feature. `.strict()` specifically catches the typo case: without it,
 `?day=90` would be ignored, `days` would default to 30, and the caller would get a
 30 day window while believing they asked for 90.
 
+### validateQuery does not write to req.query
+
+**Context.** `validateBody` replaces `req.body` with the parsed result, and the
+obvious symmetry is for `validateQuery` to replace `req.query`. It was written
+that way first.
+
+**Decision.** The parsed result goes on `req.validatedQuery`. `req.query` is left
+untouched. The asymmetry with `validateBody` is deliberate and documented at the
+call site.
+
+**Why.** Express 5 makes `req.query` a getter-only property, so assigning to it
+throws a TypeError. `req.body` stays an ordinary writable property, so
+`validateBody` is unaffected and was left alone. Express 5 is sitting in an open
+Dependabot PR against this repo, so the original code was a defect scheduled to
+detonate on an upgrade already in the queue. Writing to a separate property costs
+nothing and removes the coupling entirely.
+
+The hazard class is worth naming: this is a change that is correct on the
+installed version, invisible to every gate, and only fails on a dependency bump.
+`tsc`, lint, and the full suite were green with the assignment in place. Nothing
+short of reading the Express 5 changelog would have surfaced it.
+
+`src/middleware/__tests__/validate.test.ts` pins the behavior. One test defines
+`req.query` as a getter to reproduce the Express 5 shape and asserts the
+middleware does not throw; against the old assignment it fails with the same
+TypeError Express 5 would raise. Three of its six tests go red if the assignment
+returns.
+
 ### URL is the source of truth for the frontend, with the default left implicit
 
 **Context.** The control needs to survive a refresh and be shareable.
@@ -348,13 +376,6 @@ as a correction before anyone notices it as a discrepancy.
 
 ## Things we punted
 
-- **`validateQuery` assigns `req.query = result.data`.** This is safe on the
-  installed Express 4.22.2. Express 5 makes `req.query` a getter-only property and
-  that assignment throws. Express 5 is sitting in an open Dependabot PR. It fails
-  loudly rather than silently, because `analyticsDashboard.test.ts` exercises the
-  middleware over real HTTP, but treat it as a named blocker for that upgrade: the
-  middleware must switch to a separate property such as `req.validatedQuery`
-  before Express 5 merges.
 - **The chunked historical backfill is still deferred.** This sprint is its
   prerequisite and left the seam: `refreshDailySummaries(id, { from, to })`
   recomputes an arbitrary range and writes no watermark. It was deprioritized
