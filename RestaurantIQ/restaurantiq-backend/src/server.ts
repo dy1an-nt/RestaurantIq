@@ -54,7 +54,7 @@ app.use(cors(corsOptions()));
 app.use(requestLogger());
 app.use(express.json());
 
-// Health check - no auth, no envelope, mounted at top level for Railway plus an
+// Health check - no auth, no envelope, mounted at top level for Render plus an
 // /api alias. Registered before the API routers so it never hits auth/limits.
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
@@ -129,7 +129,7 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
  * The scheduler dispatches ticks as `void runSchedulerTick()`, so a rejection
  * there surfaces as an unhandled rejection with nothing watching it. Node's
  * default for both of these signals is to terminate, and that behaviour is
- * preserved. We exit(1) after flushing so Railway restarts a process that is
+ * preserved. We exit(1) after flushing so Render restarts a process that is
  * in an unknown state, rather than leaving it half-alive. The only thing added
  * is that the error gets recorded before the process goes away.
  */

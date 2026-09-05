@@ -4,12 +4,25 @@ Restaurant analytics and marketing SaaS. Syncs with POS systems (Square) and del
 
 ## Project Overview
 
-**MVP Scope:** Menu analytics + marketing copy only.
-- Square POS + DoorDash API integration for unified order data
+**Shipped scope.** The original MVP was menu analytics plus marketing copy. The
+product has grown past that, so do not treat anything below as out of scope
+without checking `restaurantiq-backend/src/routes/` and
+`restaurantiq-frontend/src/pages/` first.
+
+- Square POS + DoorDash ingestion into unified order data, on a background sync
+  scheduler with leader election and retry
 - Analytics dashboard: top/bottom items by revenue, margin, time-of-day heatmaps, week-over-week trends
-- AI insights via Claude API: plain English recommendations on what to promote, cut, or reprice
-- Marketing copy generation: social captions, promo ideas based on item performance
+- Channel margin and delivery economics
 - Alerts: item not selling, trending down 20%, new top performer
+- AI insights via Claude API: persisted recommendations on what to promote, cut, or reprice
+- Advisor chat over the restaurant's own data
+- Marketing copy generation: social captions, promo ideas based on item performance
+
+**DoorDash is not production-verified.** The Marketplace order and menu endpoints
+are partner-gated, so `services/doordash/doordashClient.ts` talks to a
+configurable base URL and, in mock mode, returns a deterministic fixture set.
+Square is the integration with a real sandbox behind it. Do not write docs or
+copy that imply a live DoorDash merchant connection.
 
 ## Tech Stack
 
@@ -19,7 +32,7 @@ Restaurant analytics and marketing SaaS. Syncs with POS systems (Square) and del
 | Backend | Node.js + Express |
 | Database | PostgreSQL (Supabase) |
 | AI | Anthropic Claude API |
-| Hosting | Vercel (frontend) + Railway (backend) |
+| Hosting | Vercel (frontend) + Render (backend, `render.yaml` at repo root) |
 
 ## Operating Discipline
 
@@ -30,7 +43,7 @@ when a step feels unnecessary. That feeling is exactly what they exist to overri
 
 ### Before the first edit of a session
 
-- Read `docs/sharp-edges.md` (~60 lines). It pays for itself on almost every task.
+- Read `docs/sharp-edges.md` in full. It is short and it pays for itself on almost every task.
 - If the task names a file, read that file **and its immediate neighbors** (route ↔
   controller ↔ service, or page ↔ context) before proposing anything.
 
@@ -58,14 +71,24 @@ the summary must say so explicitly. "Should work" is a banned phrase.
 
 1. `npx tsc --noEmit` exits 0 in every package touched
    (`restaurantiq-backend/`, `restaurantiq-frontend/`).
-2. The changed flow was **exercised, not just compiled**: hit the endpoint with
+2. `npm run lint` exits 0 in every package touched. Both packages run ESLint with
+   `--max-warnings 0`, so a warning is a failure.
+3. Backend changes: `npm test` passes. Run the whole suite, it is fast. If the
+   change touches auth, tenant scoping, money, tokens, or the sync scheduler,
+   assume a spec already exists under `src/**/__tests__/` and go find it. A
+   behavior change needs a test added or changed, not just a green run.
+4. Frontend changes: `npm run build` exits 0. `tsc --noEmit` alone does not catch
+   a broken Vite build.
+5. The changed flow was **exercised, not just compiled**: hit the endpoint with
    `curl`, load the page. If it wasn't run, the summary states exactly what
    wasn't run and why.
-3. The full diff was re-read top to bottom after the last edit.
-4. Invariants re-checked against the diff: tenant scoping present, `{ data, error }`
+6. The full diff was re-read top to bottom after the last edit.
+7. Invariants re-checked against the diff: tenant scoping present, `{ data, error }`
    shape intact, money still integer cents, any migration numbered + idempotent.
-5. If manual SQL must be run in the Supabase SQL editor, the summary says so in its
-   own paragraph, every time, even if mentioned earlier.
+8. Schema changes went through the tracked runner (the `/migrate` skill), not the
+   Supabase SQL editor. `docs/migrations.md` forbids hand-applied SQL for
+   production. If SQL was applied by hand anyway, the summary says so in its own
+   paragraph, every time, and says why the runner was not used.
 
 ### Reporting
 
@@ -84,34 +107,25 @@ the summary must say so explicitly. "Should work" is a banned phrase.
 
 ## Database Schema
 
-```sql
-restaurants
-  id, name, location, pos_connected, delivery_connected,
-  square_location_id, doordash_store_id, created_at
+[`docs/schema.md`](docs/schema.md) is canonical, and the numbered files in
+`restaurantiq-backend/migrations/` are the ground truth behind it. Read the
+relevant migration before writing a query or a new migration. Do not trust a
+table list pasted into an instruction file, including this one, because that is
+exactly the copy that goes stale.
 
-menu_items
-  id, restaurant_id, name, category, price_cents, cost_cents,
-  source (toast/doordash/manual), created_at
+The invariants outlive any particular table:
 
-orders
-  id, restaurant_id, source, total_cents, ordered_at, created_at
-
-order_items
-  id, order_id, menu_item_id, quantity, unit_price_cents
-
-daily_summaries
-  id, restaurant_id, menu_item_id, date, total_quantity,
-  total_revenue_cents, total_orders
-
-alerts
-  id, restaurant_id, menu_item_id, type (no_sales/trending_down/new_top_performer),
-  is_read, created_at
-```
+- Every tenant-scoped table carries `restaurant_id`, and every query filters on it
+- Money is integer cents at rest and in transit, never a float
+- Square and DoorDash OAuth tokens are AES-256-GCM encrypted at rest
+- Migrations are forward-only, numbered, and idempotent
 
 ## Agent Team System
 
-Seven specialized agents per sprint (architect → backend + frontend → security →
-QA → devops → teaching), orchestrated from the main session as the message bus.
+Seven sprint roles (architect → backend + frontend → security → QA → devops →
+teaching), filled by the six definitions in `.claude/agents/`: `qa-agent` runs
+twice, once with a security brief and once for functional QA. Orchestrated from
+the main session as the message bus.
 The full playbook lives in the **`/sprint` skill** (repo-root
 `.claude/skills/sprint/SKILL.md`). It covers agent roles, goal formats, workflow
 order, and the orchestration protocol (self-contained prompts, contracts pasted

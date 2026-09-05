@@ -8,7 +8,7 @@ import { supabase } from './supabase';
  * port for development. Trailing slashes are stripped so joining with a
  * leading-slash path never produces a double slash.
  *
- * In production this MUST be set (e.g. https://restaurantiq.up.railway.app),
+ * In production this MUST be set (e.g. https://restaurantiq-backend.onrender.com),
  * otherwise the deployed frontend would try to reach localhost.
  */
 export const API_BASE_URL = (

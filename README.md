@@ -6,7 +6,7 @@
 
 **Restaurant analytics and AI advisory software for independent operators.** RestaurantIQ combines Square and DoorDash order data, calculates menu performance and margins, and turns those numbers into prioritized actions.
 
-**Pilot status:** deployment configuration targets Vercel and Railway. A verified public demo URL is not currently published.
+**Pilot status:** deployment configuration targets Vercel and Render. A verified public demo URL is not currently published.
 
 ![RestaurantIQ dashboard showing menu performance, KPIs, and items needing attention](RestaurantIQ/docs/screenshots/dashboard.png)
 
@@ -39,7 +39,7 @@ Delivery creates another gap. Square and DoorDash report their numbers separatel
 ```mermaid
 flowchart LR
     Owner["Restaurant owner"] -->|HTTPS| Frontend["React + Vite frontend\nVercel"]
-    Frontend -->|REST + JWT| Backend["Express + TypeScript API\nRailway"]
+    Frontend -->|REST + JWT| Backend["Express + TypeScript API\nRender"]
     Backend --> Auth["Supabase Auth"]
     Backend --> Database[("PostgreSQL\nSupabase")]
     Backend --> Square["Square API"]
@@ -57,7 +57,7 @@ flowchart LR
 | Data and auth | PostgreSQL and Supabase Auth |
 | AI | Anthropic Claude API with schema-constrained tool use |
 | Integrations | Square Node SDK and DoorDash OAuth2 API |
-| Deployment target | Vercel and Railway |
+| Deployment target | Vercel and Render |
 | Quality gates | Jest, Supertest, TypeScript, ESLint, production builds, and dependency audit in CI |
 
 ## Engineering decisions
@@ -110,7 +110,7 @@ The project records decisions and failures instead of presenting a perfect build
 
 ## Current status
 
-The application is being prepared for a small restaurant pilot. The repository includes Vercel and Railway deployment configuration, but a verified public demo URL is not currently published. Current product constraints include:
+The application is being prepared for a small restaurant pilot. The repository includes Vercel and Render deployment configuration, but a verified public demo URL is not currently published. Current product constraints include:
 
 - One restaurant location per account
 - Square and DoorDash integrations only
@@ -151,7 +151,7 @@ The frontend runs at `http://localhost:5173` and calls the backend at `http://lo
 - [`docs/schema.md`](RestaurantIQ/docs/schema.md): schema diagrams and database decisions
 - [`docs/bugs.md`](RestaurantIQ/docs/bugs.md): notable failures, diagnoses, fixes, and lessons
 - [`docs/known-limitations.md`](RestaurantIQ/docs/known-limitations.md): current product and operational constraints
-- [`docs/deployment.md`](RestaurantIQ/docs/deployment.md): Railway and Vercel deployment
+- [`docs/deployment.md`](RestaurantIQ/docs/deployment.md): Render and Vercel deployment
 - [`docs/operations.md`](RestaurantIQ/docs/operations.md): backup and recovery procedures
 - [`docs/sprints-overview.md`](RestaurantIQ/docs/sprints-overview.md): historical build log
 - [`docs/archive/`](RestaurantIQ/docs/archive/): preserved detailed sprint notes

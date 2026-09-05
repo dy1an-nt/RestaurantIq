@@ -5,7 +5,7 @@ RestaurantIQ deploys as two independently-hosted services:
 | Service  | Folder                  | Host (recommended) | Build         | Start            |
 | -------- | ----------------------- | ------------------ | ------------- | ---------------- |
 | Frontend | `restaurantiq-frontend` | Vercel             | `npm run build` | static (`dist/`) |
-| Backend  | `restaurantiq-backend`  | Railway            | `npm run build` | `npm start`      |
+| Backend  | `restaurantiq-backend`  | Render             | `npm ci --include=dev && npm run build` | `npm start`      |
 
 Because the two run on different origins in production, the backend enforces a
 CORS allowlist and the frontend talks to the backend through a single
@@ -19,7 +19,7 @@ together safely.
 ```
 Browser ──HTTPS──▶  Frontend (Vercel, static)
    │
-   └──fetch(VITE_API_URL)──▶  Backend (Railway, Express)  ──▶  Supabase (Postgres + Auth)
+   └──fetch(VITE_API_URL)──▶  Backend (Render, Express)   ──▶  Supabase (Postgres + Auth)
                                                           └──▶  Anthropic API
 ```
 
@@ -41,7 +41,7 @@ Set these in Vercel -> Project -> Settings -> Environment Variables. They are
 
 ```env
 # Base URL of the deployed backend. No trailing slash.
-VITE_API_URL=https://your-backend.up.railway.app
+VITE_API_URL=https://restaurantiq-backend.onrender.com
 
 # Supabase project URL and PUBLIC anon key.
 VITE_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
@@ -58,7 +58,9 @@ Template: [`restaurantiq-frontend/.env.example`](../restaurantiq-frontend/.env.e
 
 ## Backend environment variables
 
-Set these in Railway -> Service -> Variables.
+Declared in [`render.yaml`](../../render.yaml) at the repo root. Render prompts
+for every `sync: false` value once, during blueprint creation, and never again.
+Anything added later goes in Render -> Service -> Environment.
 
 ### Required (server refuses to start without these)
 
@@ -79,12 +81,12 @@ DATABASE_URL=postgresql://USER:PASS@HOST:5432/postgres # direct/session pooler (
 ### Optional
 
 ```env
-PORT=3001                                             # Railway injects its own PORT; this is the fallback
+PORT=3001                                             # Render injects its own PORT; this is the fallback
 ANTHROPIC_MODEL=claude-haiku-4-5-20251001             # override default model
 SUPABASE_JWT_SECRET=...                               # only needed for HS256 fallback (unused when SUPABASE_URL is set)
 SYNC_SCHEDULER_ENABLED=true                           # set false to disable background syncs
 SYNC_INTERVAL_MINUTES=15
-INSTANCE_ID=railway-1                                 # label for leader-election logs
+INSTANCE_ID=render-1                                  # label for leader-election logs
 
 # Integrations (needed only when connecting real Square / DoorDash accounts)
 SQUARE_ENVIRONMENT=production
@@ -150,7 +152,7 @@ every ~5 minutes and opens (or comments on) a GitHub issue labelled `uptime`
 after three consecutive failures. One-time setup:
 
 > Settings → Secrets and variables → Actions → Variables → New repository
-> variable → `HEALTH_URL` = `https://<backend>.up.railway.app/health`
+> variable → `HEALTH_URL` = `https://<backend>.onrender.com/health`
 
 Without that variable every run skips. GitHub's scheduled runs are best-effort
 and can be delayed several minutes under load, so this is a safety net rather
@@ -207,23 +209,30 @@ development exercises the same cross-origin path as production.
 
 ---
 
-## Railway deployment (backend)
+## Render deployment (backend)
 
-1. **New Project -> Deploy from GitHub repo**, then set the service **Root
-   Directory** to `restaurantiq-backend`.
-2. Railway reads the Node version from the `engines` field in `package.json`
-   (pinned to `>=22` - Node 20 is past end-of-life). Confirm the commands:
-   - Build: `npm run build`
-   - Start: `npm start` (runs `node dist/server.js`)
-   Also enable **Settings -> Wait for CI** on the service so a push to `main`
-   only deploys after the GitHub CI checks pass - otherwise Railway ships the
-   commit even when CI is red.
-3. Add the environment variables from
-   [Backend environment variables](#backend-environment-variables). At minimum:
-   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`,
-   `NODE_ENV=production`, `FRONTEND_URL`, and `DATABASE_URL`.
-4. Deploy. Railway provides `PORT` automatically - the server reads it.
-5. **Run database migrations** before/at first deploy so the schema matches the
+The service is defined as a blueprint in [`render.yaml`](../../render.yaml) at
+the repo root, so most of this is one dashboard flow rather than a field-by-field
+setup. Read that file alongside these steps; its comments carry the reasoning.
+
+1. **Render Dashboard -> New -> Blueprint**, pointed at this repository. Render
+   reads `render.yaml` and creates the `restaurantiq-backend` web service with
+   `rootDir` already set to `RestaurantIQ/restaurantiq-backend`.
+2. Render prompts for every `sync: false` variable during that first creation
+   flow and never again. Have these ready: `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `TOKEN_ENCRYPTION_KEY`
+   (64 hex chars, `openssl rand -hex 32`), `FRONTEND_URL`, and `DATABASE_URL`.
+   Anything you add later goes in Service -> Environment.
+3. The build command is `npm ci --include=dev && npm run build`. The
+   `--include=dev` is required, not cosmetic: the blueprint sets
+   `NODE_ENV=production`, Render applies env vars during the build, and npm then
+   omits devDependencies. `typescript` is one of them, so a plain `npm ci`
+   leaves no `tsc` and the build dies with `tsc: not found`.
+4. Node version comes from the `NODE_VERSION=22` env var in the blueprint, which
+   matches the `engines` pin in both `package.json` files and what CI runs.
+5. Deploy. Render injects `PORT` itself and `src/server.ts` reads it. Do not set
+   `PORT` in the blueprint.
+6. **Run database migrations** before/at first deploy so the schema matches the
    code. From a machine with the production `DATABASE_URL` (see
    [migrations.md](./migrations.md)):
    ```bash
@@ -232,15 +241,27 @@ development exercises the same cross-origin path as production.
    DATABASE_URL=<prod> npm run migrate            # apply any pending migrations
    DATABASE_URL=<prod> npm run migrate:status     # expect: 0 pending
    ```
-6. Copy the public URL (e.g. `https://restaurantiq-backend.up.railway.app`) -
+7. Copy the public URL (e.g. `https://restaurantiq-backend.onrender.com`) -
    you'll need it for the frontend's `VITE_API_URL`.
-7. **Startup verification:** check the Railway deploy logs for
+8. **Startup verification:** check the Render deploy logs for
    `RestaurantIQ API running on port ...`. A missing/invalid env var instead
    prints `Missing or invalid environment variables:` and the process exits -
    fix the variable and redeploy.
-8. **Health check:** `curl https://<your-backend>/health` ->
-   `{"status":"ok","timestamp":"...","version":"..."}`. Set this path as the
-   Railway service health check (it needs no auth and touches no database).
+9. **Health check:** `curl https://<your-backend>/health` ->
+   `{"status":"ok","timestamp":"...","version":"..."}`. The blueprint already
+   sets `healthCheckPath: /health`, which Render also uses to decide a deploy is
+   live. The endpoint needs no auth and touches no database.
+10. Check the service's **Auto-Deploy** setting so you know whether a push to
+    `main` ships immediately. Nothing in the blueprint gates a deploy on CI, so
+    if you want that gate, use branch protection on `main` with the CI checks
+    marked required.
+
+> **The free plan spins down.** A free web service sleeps after 15 minutes with
+> no requests and takes about a minute to wake. The sync scheduler does not run
+> while asleep, so the `HEALTH_URL` uptime probe below is what keeps background
+> syncs firing. Setting it is functional here, not just monitoring. The plan
+> allows 750 instance hours per workspace per month; kept awake continuously
+> this service uses roughly 730, which fits with no room for a second service.
 
 > For `DATABASE_URL`, use Supabase's **session pooler / direct connection on
 > port 5432**, not the transaction pooler (6543) - the scheduler's
@@ -258,10 +279,10 @@ development exercises the same cross-origin path as production.
    - Build verification: `npm run build` should complete with a `dist/` bundle
      (a chunk-size advisory is expected and non-fatal). Run it locally first if
      unsure - a failing build fails the Vercel deploy.
-3. Add environment variables: `VITE_API_URL` (the Railway URL from above),
+3. Add environment variables: `VITE_API_URL` (the Render URL from above),
    `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 4. Deploy. Note the resulting domain (e.g. `https://restaurantiq.vercel.app`).
-5. Go back to Railway and make sure that domain is in `FRONTEND_URL`, then
+5. Go back to Render and make sure that domain is in `FRONTEND_URL`, then
    redeploy the backend if you changed it.
 
 > Vercel preview deployments get unique URLs. To allow them, either add the
@@ -269,9 +290,8 @@ development exercises the same cross-origin path as production.
 > against a backend whose `NODE_ENV` is not `production`.
 
 > Vercel reads the Node version from `engines` in `package.json` (pinned
-> `>=22`). Unlike Railway, Vercel has no "wait for CI" toggle - production
-> deploys are only gated on CI if `main` has GitHub branch protection with the
-> CI checks marked required.
+> `>=22`). Vercel production deploys are only gated on CI if `main` has GitHub
+> branch protection with the CI checks marked required.
 
 ---
 
@@ -288,7 +308,7 @@ development exercises the same cross-origin path as production.
       [operations.md](./operations.md#environment-variable-recovery)).
 - [ ] Migrations applied + `npm run migrate:status` shows `0 pending`
       (see [migrations.md](./migrations.md)).
-- [ ] Frontend `VITE_API_URL` points at the Railway backend (no trailing slash).
+- [ ] Frontend `VITE_API_URL` points at the Render backend (no trailing slash).
 - [ ] Frontend redeployed after any `VITE_API_URL` change.
 
 ## Post-deployment checklist
@@ -313,7 +333,7 @@ Run these against the live deployment after every production deploy:
       shows helmet headers.
 - [ ] **CORS** - the deployed frontend loads with no CORS errors, and a request
       from an unlisted origin is blocked (no `Access-Control-Allow-Origin` header).
-- [ ] **Cross-origin requests succeed** - the SPA on Vercel can call the Railway
+- [ ] **Cross-origin requests succeed** - the SPA on Vercel can call the Render
       backend (the end-to-end path of the two checks above).
 
 ## Related operational docs

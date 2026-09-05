@@ -17,7 +17,7 @@ Do not start the pilot until all of these are true:
 - [ ] Supabase project is on the **Pro plan** (Free has no production-grade
       backups — see operations.md).
 - [ ] A **restore drill** has been completed at least once (§4).
-- [ ] All required environment variables set in Railway + Vercel (§1).
+- [ ] All required environment variables set in Render + Vercel (§1).
 - [ ] At least one end-to-end dry run on a sandbox restaurant (§5) passed.
 
 ---
@@ -26,7 +26,7 @@ Do not start the pilot until all of these are true:
 
 Full reference + behavior: [`deployment.md`](deployment.md). Quick verification list:
 
-### Backend (Railway)
+### Backend (Render)
 - [ ] `SUPABASE_URL` — required; server refuses to start without it.
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` — required.
 - [ ] `ANTHROPIC_API_KEY` — required.
@@ -67,9 +67,9 @@ Error tracking and an uptime probe now exist, but **both are inert until you
 configure them** (deployment.md -> Monitoring). Do that first:
 
 - [ ] **Sentry:** create a project, set `SENTRY_DSN` (and `SENTRY_ENVIRONMENT=production`)
-      in Railway. Confirm the boot log shows `{"event":"SENTRY_STATUS","enabled":true}`.
+      in Render. Confirm the boot log shows `{"event":"SENTRY_STATUS","enabled":true}`.
 - [ ] **Uptime:** add a repository variable `HEALTH_URL` =
-      `https://<backend>.up.railway.app/health`, then run the **Uptime** workflow
+      `https://<backend>.onrender.com/health`, then run the **Uptime** workflow
       manually once (Actions -> Uptime -> Run workflow) to prove it passes.
 - [ ] Watch for issues labelled `uptime` - one opens after three consecutive
       failed probes and is commented on, not duplicated, while the outage lasts.
@@ -79,7 +79,7 @@ Still manual, because nothing automates these yet:
 - [ ] **Sync health:** enable developer mode (Settings -> Developer) and watch the
       **Sync Health** page - last-success times, retry counts, error messages per
       provider, per restaurant. A sync failure does not page anyone.
-- [ ] **Logs:** scan Railway logs for `error`-level structured JSON daily.
+- [ ] **Logs:** scan Render logs for `error`-level structured JSON daily.
 - [ ] **AI cost:** check Anthropic usage against expectations (chat + insights are
       rate-limited, but watch for anomalies).
 - [ ] **Data freshness:** each restaurant's dashboard shows "Last synced"; an amber
@@ -122,7 +122,7 @@ For each pilot restaurant:
 Per [`deployment.md`](deployment.md):
 
 - [ ] **Frontend:** Vercel → redeploy the previous deployment (instant).
-- [ ] **Backend:** Railway → roll back to the previous deployment.
+- [ ] **Backend:** Render → roll back to the previous deployment.
 - [ ] **Database:** forward-only migrations — roll back by restoring from backup
       (§4) or PITR; do **not** hand-edit. Practice this in the restore drill.
 - [ ] Keep the previous known-good commit SHA noted before each deploy.
