@@ -109,7 +109,6 @@ import {
   markSkipped,
   findDueRetryJobs,
   countPendingRetries,
-  countActive,
 } from '../syncJobs';
 
 beforeEach(() => {
@@ -235,20 +234,12 @@ describe('findDueRetryJobs', () => {
   });
 });
 
-// ── countPendingRetries / countActive ─────────────────────────────────────────
+// ── countPendingRetries ───────────────────────────────────────────────────────
 
 describe('countPendingRetries', () => {
   it('returns the count from the DB', async () => {
     mockState.selectCount = 3;
     const count = await countPendingRetries('r1');
     expect(count).toBe(3);
-  });
-});
-
-describe('countActive', () => {
-  it('returns the count from the DB', async () => {
-    mockState.selectCount = 1;
-    const count = await countActive('r1');
-    expect(count).toBe(1);
   });
 });

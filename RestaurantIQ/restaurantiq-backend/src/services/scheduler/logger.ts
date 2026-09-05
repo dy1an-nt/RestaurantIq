@@ -20,7 +20,9 @@ export type SchedulerEvent =
   | 'RETRY_SCHEDULED'
   | 'RETRY_EXECUTED'
   | 'LOCK_ACQUIRED'
-  | 'LOCK_RELEASED';
+  | 'LOCK_RELEASED'
+  | 'SCHEDULER_BATCH_TRUNCATED'
+  | 'SCHEDULER_PRIORITY_UNAVAILABLE';
 
 /**
  * Emit a structured JSON log line to stderr.

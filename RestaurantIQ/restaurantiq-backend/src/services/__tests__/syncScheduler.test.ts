@@ -96,7 +96,6 @@ jest.mock('../doordash/doordashClient', () => ({ isMockMode: () => doordashMock(
 import {
   classifyIntegration,
   syncIntegration,
-  runScheduledSync,
 } from '../syncScheduler';
 
 const squareRow = (over: Record<string, any> = {}) => ({
@@ -231,6 +230,18 @@ describe('syncIntegration — respecting integration state', () => {
     expect(ingestSquareMock).not.toHaveBeenCalled();
     expect(outcome).toMatchObject({ skipped: true, reason: 'token_expired' });
   });
+
+  it('stamps last_attempted_at on a skip so the pair does not pin the batch', async () => {
+    // A skip is an attempt: the scheduler spent a batch slot on this pair.
+    // Leaving last_attempted_at null kept every disconnected integration at the
+    // head of the least-recently-attempted ordering forever, which starves the
+    // integrations that can actually sync.
+    await syncIntegration(squareRow({ pos_connected: false }), 'square');
+
+    const skipped = lastUpdate((p) => p.status === 'disconnected', 'integration_sync_status');
+    expect(skipped).toBeDefined();
+    expect(typeof skipped.last_attempted_at).toBe('string');
+  });
 });
 
 describe('syncIntegration — overlap prevention', () => {
@@ -304,25 +315,5 @@ describe('syncIntegration — durable retry pipeline', () => {
     // The existing row was flipped to running (leaves pending_retry → not re-due).
     expect(syncJobUpdate((p) => p.status === 'running')).toBeDefined();
     expect(syncJobUpdate((p) => p.status === 'success')).toBeDefined();
-  });
-});
-
-describe('runScheduledSync — failure isolation', () => {
-  it('one restaurant failing does not stop the others', async () => {
-    mockState.restaurants = [
-      squareRow({ id: 'r1' }),
-      squareRow({ id: 'r2' }),
-    ];
-    ingestSquareMock
-      .mockRejectedValueOnce(new Error('r1 boom'))
-      .mockResolvedValueOnce({ ok: true, catalogCount: 1, orderCount: 2 });
-
-    const outcomes = await runScheduledSync();
-
-    // Both restaurants were attempted despite the first throwing.
-    expect(ingestSquareMock).toHaveBeenCalledTimes(2);
-    expect(outcomes).toHaveLength(2);
-    expect(outcomes.find((o) => o.restaurantId === 'r1')!.status).toBe('failed');
-    expect(outcomes.find((o) => o.restaurantId === 'r2')!.status).toBe('success');
   });
 });

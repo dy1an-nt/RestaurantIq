@@ -34,6 +34,12 @@ rather than to an agent definition. Agent files must point here, not copy from h
 - **`upsert` + partial unique indexes don't mix.** `onConflict: 'a,b,c'` translates to
   `ON CONFLICT (a,b,c)` without the `WHERE` predicate. Use a regular `UNIQUE` constraint.
   (Migration 008.)
+- **An unranged `select()` is silently truncated.** PostgREST applies a max-rows cap
+  (commonly 1000) and returns a short result with no error, so a full-table read looks
+  complete right up until the table outgrows the cap. Any read whose correctness depends
+  on seeing every row must page with `.range()` and carry an explicit `.order()`, because
+  range paging over an unordered query can repeat or skip rows. (`readLastAttempts` in
+  `services/scheduler/index.ts`.)
 - **Two Supabase clients exist**: `db.ts` (canonical) and a legacy one in `server.ts`
   (used only by `restaurantController.ts`). New code uses `db.ts`. Never add a third.
 
@@ -45,6 +51,40 @@ rather than to an agent definition. Agent files must point here, not copy from h
 - **Migrations go through the tracked runner and must be idempotent where practical**
   (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS … ADD`). Number each file and apply it
   with `npm run migrate`; never hand-paste production changes into the SQL editor.
+
+## Async & scheduling
+
+- **`Promise.race` does not cancel the loser.** A timeout race rejects the caller,
+  but the work it raced against keeps running: the losing timer stays armed, and a
+  losing loop keeps calling the provider after its job was already recorded as
+  failed and a retry started a second pull. Clear the timer in `finally`, and give
+  any unbounded loop inside a raced promise its own bound so it stops itself.
+  (`syncIntegration`'s 90s race in `syncScheduler.ts`, and the page cap plus
+  deadline in `services/square/paginate.ts`.)
+- **A batch cap over an unordered query starves the tail.** `slice(0, limit)` on a
+  `select()` with no `ORDER BY` is not "the first N this round", it is the same N
+  every round, and everything past the cap simply never runs. Order by whatever
+  makes the selection rotate (least-recently-attempted) and log when the batch is
+  truncated, so growth past the cap shows up in logs instead of as missing data.
+  (`prioritizeByStaleness` and `SCHEDULER_BATCH_TRUNCATED` in
+  `services/scheduler/index.ts`.)
+- **Whatever the rotation sorts on must be written on every path, including the
+  skips.** A least-recently-attempted ordering where the skip path never stamps
+  `last_attempted_at` is worse than no ordering: the work that can never succeed
+  sorts first forever and holds the whole batch, so nothing else runs. If a state
+  is dispatchable, dispatching it counts as an attempt. (`setStatus` in
+  `syncScheduler.ts`.)
+- **A bound a healthy caller can reach is an outage, not a guard.** A page cap
+  sized for the common case turns a large but legitimate account into a permanent
+  failure, because the throw is classified transient and every retry hits the same
+  cap. Size the cheap wall-clock bound for safety and put the page cap far out of
+  reach of real data. (`MAX_ORDER_PAGES` vs `MAX_PAGES_PER_ENDPOINT` in
+  `services/square/paginate.ts`.)
+- **A partial pull that reports success is worse than a failed one.** Swallowing a
+  paging error and continuing records a green sync over silently incomplete data.
+  Throw and let the retry budget handle it. Check that the thrown message cannot
+  match `isAuthError` in `syncScheduler.ts`, or a transient failure gets
+  classified as permanent and never retries.
 
 ## Square
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { relativeTime } from '../lib/format';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
@@ -335,28 +335,43 @@ const Integrations = () => {
 
   const [health, setHealth] = useState<Record<'square' | 'doordash', ProviderHealth> | null>(null);
 
+  // One controller for every health request of the current restaurant, held in
+  // a ref rather than passed as an argument so the card's post-connect/sync
+  // refetch is covered by the same cancellation as the poll. Passing the signal
+  // in left that path unguarded, since the cards call it as `() => void`.
+  const healthAbort = useRef<AbortController | null>(null);
+
   const fetchHealth = useCallback(async () => {
     if (!restaurant) return;
+    const signal = healthAbort.current?.signal;
     try {
-      const res = await apiFetch('/api/integrations/sync-status');
+      const res = await apiFetch('/api/integrations/sync-status', { signal });
       const body = await res.json();
+      // A slow response for the previously selected restaurant would otherwise
+      // land in state after the user switched, showing the wrong provider
+      // health under the new restaurant.
+      if (signal?.aborted) return;
       if (res.ok && !body.error) {
         setHealth(body.data as Record<'square' | 'doordash', ProviderHealth>);
       }
     } catch {
-      /* health is best-effort — leave prior value on failure */
+      /* health is best-effort, leave the prior value on failure */
     }
   }, [restaurant]);
 
-  useEffect(() => {
-    fetchHealth();
-  }, [fetchHealth]);
-
-  // Poll periodically so background (scheduled) syncs surface without a reload.
+  // Load once, then poll so background (scheduled) syncs surface without a
+  // reload. One controller covers both, so a restaurant switch or an unmount
+  // discards whatever was in flight.
   useEffect(() => {
     if (!restaurant) return;
-    const id = setInterval(fetchHealth, 30_000);
-    return () => clearInterval(id);
+    const controller = new AbortController();
+    healthAbort.current = controller;
+    void fetchHealth();
+    const id = setInterval(() => void fetchHealth(), 30_000);
+    return () => {
+      controller.abort();
+      clearInterval(id);
+    };
   }, [restaurant, fetchHealth]);
 
   const squareConfig: IntegrationConfig = {

@@ -5,7 +5,9 @@
  * tick it:
  *   1. Verifies (or acquires) the Postgres advisory lock — only the leader runs.
  *   2. Processes due retry jobs (pending_retry rows whose next_retry_at <= now).
- *   3. Discovers all active integrations and dispatches fresh syncs.
+ *   3. Discovers all active integrations and dispatches fresh syncs, skipping
+ *      any (restaurant, provider) already synced by step 2 this tick, and
+ *      taking the least-recently-attempted first so the batch cap rotates.
  *   4. Records tick metadata in scheduler_state for health observability.
  *
  * Concurrency:
@@ -15,10 +17,9 @@
  *     up in a single tick.
  *
  * server.ts should call startScheduler() once after the HTTP listener is up,
- * and stopScheduler() on SIGTERM/SIGINT for graceful shutdown.
- *
- * Re-exports startSyncScheduler/stopSyncScheduler aliases so existing imports
- * in server.ts can be updated without touching the route files.
+ * and stopScheduler() on SIGTERM/SIGINT for graceful shutdown. This module is
+ * the only scheduler entry point; syncScheduler.ts owns executing one sync,
+ * not deciding when syncs happen.
  */
 
 import { supabase } from '../../db';
@@ -85,6 +86,99 @@ async function concurrentMap<T>(
 
 // ── Tick ─────────────────────────────────────────────────────────────────────
 
+/** Identity of one syncable integration, for per-tick de-duplication. */
+const pairKey = (restaurantId: string, provider: string): string =>
+  `${restaurantId}:${provider}`;
+
+/** Rows per status page. PostgREST caps an unranged select, so we range explicitly. */
+const STATUS_PAGE_SIZE = 1000;
+
+/** Ceiling on status pages, so a mis-sized page can't loop the tick forever. */
+const MAX_STATUS_PAGES = 50;
+
+/**
+ * Read every (restaurant, provider) attempt timestamp.
+ *
+ * The select MUST be ranged and ordered. An unranged `select()` is silently
+ * truncated by PostgREST's max-rows, and a pair missing from the truncated page
+ * would read as "never attempted" and jump to the head of the batch. That turns
+ * the ordering into noise at exactly the scale it exists for. The explicit
+ * ORDER BY is what makes range paging stable; without it Postgres may repeat or
+ * skip rows across pages.
+ *
+ * Returns null if the read failed or could not be completed, which the caller
+ * treats as "no ordering available" rather than as a partial ordering.
+ */
+const readLastAttempts = async (): Promise<Map<string, number> | null> => {
+  const lastAttempt = new Map<string, number>();
+
+  for (let page = 0; page < MAX_STATUS_PAGES; page++) {
+    const from = page * STATUS_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from('integration_sync_status')
+      .select('restaurant_id, provider, last_attempted_at')
+      .order('restaurant_id', { ascending: true })
+      .order('provider', { ascending: true })
+      .range(from, from + STATUS_PAGE_SIZE - 1);
+
+    if (error) {
+      logEvent('SCHEDULER_PRIORITY_UNAVAILABLE', { error: error.message });
+      return null;
+    }
+
+    const rows = (data ?? []) as Array<{
+      restaurant_id: string;
+      provider: string;
+      last_attempted_at: string | null;
+    }>;
+    for (const r of rows) {
+      lastAttempt.set(
+        pairKey(r.restaurant_id, r.provider),
+        r.last_attempted_at ? new Date(r.last_attempted_at).getTime() : 0,
+      );
+    }
+
+    // A short page is the last page.
+    if (rows.length < STATUS_PAGE_SIZE) return lastAttempt;
+  }
+
+  logEvent('SCHEDULER_PRIORITY_UNAVAILABLE', {
+    error: `status table exceeded ${MAX_STATUS_PAGES} pages`,
+  });
+  return null;
+};
+
+/**
+ * Order integrations least-recently-attempted first.
+ *
+ * Discovery returns every integration in whatever order Postgres hands back,
+ * and the tick then keeps only the first SYNC_BATCH_SIZE of them. Past that
+ * many integrations the tail was not merely delayed, it was never selected at
+ * all. Sorting by last attempt turns a fixed prefix into a rotation: whoever
+ * has waited longest goes first, and an integration that has never synced
+ * sorts ahead of every integration that has.
+ *
+ * Best effort. If the status lookup fails the tick still runs, just in the
+ * unordered discovery order it used before.
+ */
+const prioritizeByStaleness = async <
+  T extends { row: { id: string }; provider: string },
+>(
+  integrations: T[],
+): Promise<T[]> => {
+  if (integrations.length === 0) return integrations;
+
+  const lastAttempt = await readLastAttempts();
+  if (!lastAttempt) return integrations;
+
+  // Missing row means never attempted, which sorts first.
+  return [...integrations].sort(
+    (a, b) =>
+      (lastAttempt.get(pairKey(a.row.id, a.provider)) ?? 0) -
+      (lastAttempt.get(pairKey(b.row.id, b.provider)) ?? 0),
+  );
+};
+
 let ticking = false;
 
 /** Update scheduler_state with last-tick metadata. Fire-and-forget. */
@@ -134,6 +228,8 @@ export const runSchedulerTick = async (): Promise<number> => {
     let jobsProcessed = 0;
     const limit = batchSize();
     const concurrency = maxConcurrency();
+    /** (restaurant, provider) pairs already dispatched by the retry phase. */
+    const syncedThisTick = new Set<string>();
 
     // ── 2. Retry processing ────────────────────────────────────────────────
     const now = new Date();
@@ -158,6 +254,11 @@ export const runSchedulerTick = async (): Promise<number> => {
       const retryTasks = retryJobs.map((job) => async () => {
         const row = rowById.get(job.restaurant_id);
         if (!row) return;
+        // Claim this pair so discovery below does not sync it a second time
+        // in the same tick. Claimed before the await, not after, so a retry
+        // that fails still counts as this tick's attempt for the pair rather
+        // than being immediately re-run as a fresh scheduled sync.
+        syncedThisTick.add(pairKey(job.restaurant_id, job.provider));
         logEvent('RETRY_EXECUTED', {
           restaurantId: job.restaurant_id,
           provider: job.provider,
@@ -175,8 +276,25 @@ export const runSchedulerTick = async (): Promise<number> => {
     }
 
     // ── 3. Discovery + dispatch ────────────────────────────────────────────
-    const integrations = await discoverActiveIntegrations();
+    // A retry that just ran released its lock, so without this filter the same
+    // integration would sync twice in one tick and burn double provider quota.
+    const discovered = (await discoverActiveIntegrations()).filter(
+      ({ row, provider }) => !syncedThisTick.has(pairKey(row.id, provider)),
+    );
+    const integrations = await prioritizeByStaleness(discovered);
     const batch = integrations.slice(0, limit);
+
+    // Truncation is normal once there are more integrations than one tick's
+    // budget, but it must be visible: silently dropping the tail is how the
+    // batch cap looked like a working scheduler while starving the tail.
+    if (integrations.length > batch.length) {
+      logEvent('SCHEDULER_BATCH_TRUNCATED', {
+        discovered: integrations.length,
+        dispatched: batch.length,
+        deferred: integrations.length - batch.length,
+        limit,
+      });
+    }
 
     const freshTasks = batch.map(({ row, provider }) => async () => {
       await syncIntegration(row, provider, 'scheduled');
@@ -262,10 +380,3 @@ export const stopScheduler = async (): Promise<void> => {
   }
   await releaseLeadership();
 };
-
-// ── Back-compat aliases for existing server.ts import ────────────────────────
-
-/** @deprecated import from ./services/scheduler instead */
-export const startSyncScheduler = startScheduler;
-/** @deprecated import from ./services/scheduler instead */
-export const stopSyncScheduler = stopScheduler;

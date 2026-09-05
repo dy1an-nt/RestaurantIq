@@ -12,6 +12,7 @@ import {
   MenuItemRow,
 } from './normalizers';
 import { IngestResult, NormalizedOrder } from '../ingestion/types';
+import { collectPages, INGEST_PAGE_BUDGET_MS, MAX_ORDER_PAGES } from './paginate';
 import {
   upsertCatalog,
   upsertOrders,
@@ -162,43 +163,56 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
   const client = getSquareClient({ accessToken: await ensureFreshSquareToken(restaurant) });
   const locationId = restaurant.square_location_id;
 
+  // One pagination budget for the whole ingest, so a slow catalog pull cannot
+  // leave the orders pull running past the scheduler's sync timeout.
+  const pageDeadline = Date.now() + INGEST_PAGE_BUDGET_MS;
+
   // 1. Catalog
-  const catalogRows: MenuItemRow[] = [];
-  let cursor: string | undefined;
-  do {
-    const { result } = await client.catalogApi.searchCatalogObjects({
-      objectTypes: ['ITEM'],
-      cursor,
-      includeRelatedObjects: true,
-    });
-    for (const obj of result.objects ?? []) {
-      const row = normalizeCatalogItem(obj, restaurantId);
-      if (row) catalogRows.push(row);
-    }
-    cursor = result.cursor;
-  } while (cursor);
+  const catalogRows = await collectPages<MenuItemRow>(
+    'catalog',
+    async (cursor) => {
+      const { result } = await client.catalogApi.searchCatalogObjects({
+        objectTypes: ['ITEM'],
+        cursor,
+        includeRelatedObjects: true,
+      });
+      const items: MenuItemRow[] = [];
+      for (const obj of result.objects ?? []) {
+        const row = normalizeCatalogItem(obj, restaurantId);
+        if (row) items.push(row);
+      }
+      return { items, cursor: result.cursor };
+    },
+    { deadline: pageDeadline },
+  );
 
   const externalToInternal = await upsertCatalog(catalogRows, 'square');
 
   // 2. Orders
-  const orderRows: NormalizedOrder[] = [];
-  let orderCursor: string | undefined;
+  let orderRows: NormalizedOrder[] = [];
   try {
-    do {
-      const { result } = await client.ordersApi.searchOrders({
-        locationIds: [locationId],
-        cursor: orderCursor,
-        query: {
-          filter: { stateFilter: { states: ['COMPLETED'] } },
-          sort: { sortField: 'CLOSED_AT', sortOrder: 'DESC' },
-        },
-      });
-      for (const o of result.orders ?? []) {
-        const norm = normalizeOrder(o, restaurantId);
-        if (norm) orderRows.push(norm);
-      }
-      orderCursor = result.cursor;
-    } while (orderCursor);
+    orderRows = await collectPages<NormalizedOrder>(
+      'orders',
+      async (cursor) => {
+        const { result } = await client.ordersApi.searchOrders({
+          locationIds: [locationId],
+          cursor,
+          query: {
+            filter: { stateFilter: { states: ['COMPLETED'] } },
+            sort: { sortField: 'CLOSED_AT', sortOrder: 'DESC' },
+          },
+        });
+        const items: NormalizedOrder[] = [];
+        for (const o of result.orders ?? []) {
+          const norm = normalizeOrder(o, restaurantId);
+          if (norm) items.push(norm);
+        }
+        return { items, cursor: result.cursor };
+      },
+      // Orders re-walk the full history every sync, so this endpoint needs the
+      // higher cap; the shared deadline is what actually bounds the pull.
+      { deadline: pageDeadline, maxPages: MAX_ORDER_PAGES },
+    );
   } catch (err) {
     console.error('[square] searchOrders failed:', (err as Error).message);
     // A failed orders pull must FAIL the sync — swallowing it here recorded a
