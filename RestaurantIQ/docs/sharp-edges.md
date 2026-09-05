@@ -46,6 +46,28 @@ rather than to an agent definition. Agent files must point here, not copy from h
   (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS … ADD`). Number each file and apply it
   with `npm run migrate`; never hand-paste production changes into the SQL editor.
 
+## Async & scheduling
+
+- **`Promise.race` does not cancel the loser.** A timeout race rejects the caller,
+  but the work it raced against keeps running: the losing timer stays armed, and a
+  losing loop keeps calling the provider after its job was already recorded as
+  failed and a retry started a second pull. Clear the timer in `finally`, and give
+  any unbounded loop inside a raced promise its own bound so it stops itself.
+  (`syncIntegration`'s 90s race in `syncScheduler.ts`, and the page cap plus
+  deadline in `services/square/paginate.ts`.)
+- **A batch cap over an unordered query starves the tail.** `slice(0, limit)` on a
+  `select()` with no `ORDER BY` is not "the first N this round", it is the same N
+  every round, and everything past the cap simply never runs. Order by whatever
+  makes the selection rotate (least-recently-attempted) and log when the batch is
+  truncated, so growth past the cap shows up in logs instead of as missing data.
+  (`prioritizeByStaleness` and `SCHEDULER_BATCH_TRUNCATED` in
+  `services/scheduler/index.ts`.)
+- **A partial pull that reports success is worse than a failed one.** Swallowing a
+  paging error and continuing records a green sync over silently incomplete data.
+  Throw and let the retry budget handle it. Check that the thrown message cannot
+  match `isAuthError` in `syncScheduler.ts`, or a transient failure gets
+  classified as permanent and never retries.
+
 ## Square
 
 - **SDK v37 mishandles `undefined` positional args** — produces malformed URLs with `&&&&`.

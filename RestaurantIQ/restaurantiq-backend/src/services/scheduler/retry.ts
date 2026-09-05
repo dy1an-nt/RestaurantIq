@@ -34,12 +34,6 @@ export const maxSyncRetries = (): number => {
   return Number.isFinite(n) && n > 0 ? n : 5;
 };
 
-/**
- * Static default exposed for display/back-compat. Prefer maxSyncRetries() for
- * any runtime budget decision so .env overrides are honored.
- */
-export const MAX_SYNC_RETRIES: number = maxSyncRetries();
-
 /** Delay in milliseconds for each retry attempt (1-indexed). */
 const BACKOFF_SCHEDULE_MS: number[] = [
   0,           // attempt 1: immediate

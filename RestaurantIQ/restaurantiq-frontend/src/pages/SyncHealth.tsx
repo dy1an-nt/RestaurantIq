@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { relativeTime } from '../lib/format';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
@@ -313,32 +313,16 @@ const SyncHealth = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMetrics = useCallback(async (isInitial = false) => {
-    if (!restaurant) return;
-    if (isInitial) setLoading(true);
-    try {
-      const res = await apiFetch('/api/integrations/sync-metrics');
-      const body = await res.json();
-      if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`);
-      setData(body.data as SyncMetricsData);
-      setError(null);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load sync metrics';
-      // On a poll failure, keep prior data visible; only show error on initial load
-      if (isInitial) setError(msg);
-      // On subsequent polls, silently leave stale data — best-effort
-    } finally {
-      if (isInitial) setLoading(false);
-    }
-  }, [restaurant]);
-
-  // Initial load
+  // Initial load, then a 30s poll so background (scheduled) syncs surface
+  // without a reload. Both go through one loader guarded by a single cancelled
+  // flag: the poll used to skip that guard, so a response for the previously
+  // selected restaurant could land in state after the user switched.
   useEffect(() => {
-    let cancelled = false;
     if (!restaurant) return;
+    let cancelled = false;
 
-    (async () => {
-      setLoading(true);
+    const load = async (isInitial: boolean) => {
+      if (isInitial) setLoading(true);
       try {
         const res = await apiFetch('/api/integrations/sync-metrics');
         const body = await res.json();
@@ -348,21 +332,24 @@ const SyncHealth = () => {
         setError(null);
       } catch (err: unknown) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load sync metrics');
+        // Only the initial load surfaces an error. A failed poll leaves the
+        // prior data on screen rather than blanking a working dashboard.
+        if (isInitial) {
+          setError(err instanceof Error ? err.message : 'Failed to load sync metrics');
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && isInitial) setLoading(false);
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
+    void load(true);
+    const id = setInterval(() => void load(false), 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [restaurant]);
-
-  // Poll every 30s — best-effort, keep prior data on failure
-  useEffect(() => {
-    if (!restaurant) return;
-    const id = setInterval(() => fetchMetrics(false), 30_000);
-    return () => clearInterval(id);
-  }, [restaurant, fetchMetrics]);
 
   if (loading) {
     return <div className="p-8 text-sm text-gray-500">Loading…</div>;

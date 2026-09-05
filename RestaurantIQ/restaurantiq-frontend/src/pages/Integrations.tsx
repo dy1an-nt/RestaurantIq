@@ -335,28 +335,37 @@ const Integrations = () => {
 
   const [health, setHealth] = useState<Record<'square' | 'doordash', ProviderHealth> | null>(null);
 
-  const fetchHealth = useCallback(async () => {
+  // The signal is optional so children can still call this as `() => void`
+  // after a connect or sync. The polling effect always passes one.
+  const fetchHealth = useCallback(async (signal?: AbortSignal) => {
     if (!restaurant) return;
     try {
-      const res = await apiFetch('/api/integrations/sync-status');
+      const res = await apiFetch('/api/integrations/sync-status', { signal });
       const body = await res.json();
+      // A slow response for the previously selected restaurant would otherwise
+      // land in state after the user switched, showing the wrong provider
+      // health under the new restaurant.
+      if (signal?.aborted) return;
       if (res.ok && !body.error) {
         setHealth(body.data as Record<'square' | 'doordash', ProviderHealth>);
       }
     } catch {
-      /* health is best-effort — leave prior value on failure */
+      /* health is best-effort, leave the prior value on failure */
     }
   }, [restaurant]);
 
-  useEffect(() => {
-    fetchHealth();
-  }, [fetchHealth]);
-
-  // Poll periodically so background (scheduled) syncs surface without a reload.
+  // Load once, then poll so background (scheduled) syncs surface without a
+  // reload. One controller covers both, so a restaurant switch or an unmount
+  // discards whatever was in flight.
   useEffect(() => {
     if (!restaurant) return;
-    const id = setInterval(fetchHealth, 30_000);
-    return () => clearInterval(id);
+    const controller = new AbortController();
+    void fetchHealth(controller.signal);
+    const id = setInterval(() => void fetchHealth(controller.signal), 30_000);
+    return () => {
+      controller.abort();
+      clearInterval(id);
+    };
   }, [restaurant, fetchHealth]);
 
   const squareConfig: IntegrationConfig = {

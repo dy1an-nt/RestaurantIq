@@ -200,18 +200,3 @@ export const countPendingRetries = async (restaurantId: string): Promise<number>
   }
   return count ?? 0;
 };
-
-/** Count actively running jobs for a restaurant (prevents double-dispatch). */
-export const countActive = async (restaurantId: string): Promise<number> => {
-  const { count, error } = await supabase
-    .from('sync_jobs')
-    .select('id', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'running');
-
-  if (error) {
-    console.error('[syncJobs] countActive failed:', error.message);
-    return 0;
-  }
-  return count ?? 0;
-};

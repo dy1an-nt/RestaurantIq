@@ -96,7 +96,6 @@ jest.mock('../doordash/doordashClient', () => ({ isMockMode: () => doordashMock(
 import {
   classifyIntegration,
   syncIntegration,
-  runScheduledSync,
 } from '../syncScheduler';
 
 const squareRow = (over: Record<string, any> = {}) => ({
@@ -304,25 +303,5 @@ describe('syncIntegration — durable retry pipeline', () => {
     // The existing row was flipped to running (leaves pending_retry → not re-due).
     expect(syncJobUpdate((p) => p.status === 'running')).toBeDefined();
     expect(syncJobUpdate((p) => p.status === 'success')).toBeDefined();
-  });
-});
-
-describe('runScheduledSync — failure isolation', () => {
-  it('one restaurant failing does not stop the others', async () => {
-    mockState.restaurants = [
-      squareRow({ id: 'r1' }),
-      squareRow({ id: 'r2' }),
-    ];
-    ingestSquareMock
-      .mockRejectedValueOnce(new Error('r1 boom'))
-      .mockResolvedValueOnce({ ok: true, catalogCount: 1, orderCount: 2 });
-
-    const outcomes = await runScheduledSync();
-
-    // Both restaurants were attempted despite the first throwing.
-    expect(ingestSquareMock).toHaveBeenCalledTimes(2);
-    expect(outcomes).toHaveLength(2);
-    expect(outcomes.find((o) => o.restaurantId === 'r1')!.status).toBe('failed');
-    expect(outcomes.find((o) => o.restaurantId === 'r2')!.status).toBe('success');
   });
 });

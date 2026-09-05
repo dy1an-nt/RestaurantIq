@@ -1,12 +1,17 @@
 /**
- * Automated integration sync scheduler (Sprint L).
+ * Per-integration sync execution (Sprint L, split in L+).
  *
  * Before this, analytics only refreshed when a user pressed "Run sync". This
  * service makes synchronization automatic, observable, and resilient while
  * keeping SCHEDULING concerns separate from provider INGESTION logic — the
  * actual Square/DoorDash pulls still live in their own services. This module
- * only decides *when*, *whether*, and *one-at-a-time* a sync should run, and
- * records the outcome.
+ * decides *whether* and *one-at-a-time* a single sync runs, and records the
+ * outcome.
+ *
+ * It does NOT own the *when*. The timer, leader election, retry dispatch, and
+ * concurrency budget all live in ./scheduler/index.ts, which is the only
+ * module server.ts starts. A duplicate timer loop lived here until L+ and was
+ * removed: it had no leader election, so every instance ran it at once.
  *
  * Responsibilities:
  *   - discover active integrations across all restaurants
@@ -68,11 +73,14 @@ export interface SyncOutcome {
 /** How long before a held lock is considered stale and may be reclaimed. */
 export const LOCK_STALE_MS = 10 * 60 * 1000; // 10 minutes
 
-/** Hard cap on a single ingest so a hung pull can't hold the lock forever. */
+/**
+ * Hard cap on a single ingest so a hung pull can't hold the lock forever.
+ *
+ * This only rejects the sync. Promise.race cannot cancel the ingest, so the
+ * ingest bounds its own pagination just under this value. See
+ * INGEST_PAGE_BUDGET_MS in ./square/paginate.ts before changing it.
+ */
 export const SYNC_TIMEOUT_MS = 90 * 1000; // 90 seconds
-
-/** Default cadence when SYNC_INTERVAL_MINUTES is unset. */
-const DEFAULT_INTERVAL_MINUTES = 15;
 
 // ── Restaurant credential shape needed to discover + classify ────────────────
 interface RestaurantRow {
@@ -435,95 +443,5 @@ export const syncIntegration = async (
     return { restaurantId, provider, status, ok: false, error: message };
   } finally {
     clearTimeout(timeoutHandle);
-  }
-};
-
-let running = false;
-
-/**
- * One scheduler tick: discover every active integration and sync each one
- * independently. Promise.allSettled + the never-throwing syncIntegration mean a
- * single restaurant's failure cannot stop the others or abort the run (Goal 6).
- *
- * Guarded so two ticks can't overlap at the dispatcher level even before the
- * per-restaurant locks come into play.
- */
-export const runScheduledSync = async (): Promise<SyncOutcome[]> => {
-  if (running) {
-    console.error('[sync] tick skipped — previous run still in progress');
-    return [];
-  }
-  running = true;
-  const startedAt = Date.now();
-  try {
-    const integrations = await discoverActiveIntegrations();
-    const settled = await Promise.allSettled(
-      integrations.map(({ row, provider }) => syncIntegration(row, provider, 'scheduled')),
-    );
-    const outcomes = settled
-      .filter((s): s is PromiseFulfilledResult<SyncOutcome> => s.status === 'fulfilled')
-      .map((s) => s.value);
-
-    const summary = outcomes.reduce(
-      (acc, o) => {
-        if (o.ok) acc.synced += 1;
-        else if (o.skipped) acc.skipped += 1;
-        else acc.failed += 1;
-        return acc;
-      },
-      { synced: 0, skipped: 0, failed: 0 },
-    );
-    console.error(
-      `[sync] tick complete ${JSON.stringify({
-        integrations: integrations.length,
-        ...summary,
-        ms: Date.now() - startedAt,
-      })}`,
-    );
-    return outcomes;
-  } finally {
-    running = false;
-  }
-};
-
-let timer: NodeJS.Timeout | null = null;
-
-const intervalMs = (): number => {
-  const minutes = Number(process.env.SYNC_INTERVAL_MINUTES);
-  const safe = Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_INTERVAL_MINUTES;
-  return safe * 60 * 1000;
-};
-
-/**
- * Start the recurring scheduler. Called once from server.ts after the HTTP
- * listener is up, so connected integrations stay current with zero user
- * interaction. Idempotent — a second call is a no-op.
- *
- * Disable with SYNC_SCHEDULER_ENABLED=false (e.g. for one-off scripts).
- */
-export const startSyncScheduler = (): void => {
-  if (timer) return;
-  if (process.env.SYNC_SCHEDULER_ENABLED === 'false') {
-    console.error('[sync] scheduler disabled via SYNC_SCHEDULER_ENABLED=false');
-    return;
-  }
-
-  const ms = intervalMs();
-  console.error(`[sync] scheduler starting — interval ${ms / 60000} min`);
-
-  // Kick an initial run shortly after boot so data is fresh immediately, then
-  // settle into the configured cadence. Errors are swallowed by runScheduledSync.
-  setTimeout(() => void runScheduledSync(), 5_000);
-
-  timer = setInterval(() => void runScheduledSync(), ms);
-  // Don't keep the event loop alive solely for the scheduler.
-  if (typeof timer.unref === 'function') timer.unref();
-};
-
-/** Stop the scheduler (tests / graceful shutdown). */
-export const stopSyncScheduler = (): void => {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
   }
 };

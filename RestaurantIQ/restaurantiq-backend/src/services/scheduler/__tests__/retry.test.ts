@@ -5,7 +5,7 @@
  * delay schedule, budget exhaustion, and the isPermanent helper.
  */
 
-import { nextRetryDelayMs, isPermanent, MAX_SYNC_RETRIES } from '../retry';
+import { nextRetryDelayMs, isPermanent, maxSyncRetries } from '../retry';
 
 describe('nextRetryDelayMs — backoff schedule', () => {
   it('attempt 1 → immediate (0 ms)', () => {
@@ -28,8 +28,8 @@ describe('nextRetryDelayMs — backoff schedule', () => {
     expect(nextRetryDelayMs(5)).toBe(3_600_000);
   });
 
-  it('beyond MAX_SYNC_RETRIES → null (budget exhausted)', () => {
-    expect(nextRetryDelayMs(MAX_SYNC_RETRIES + 1)).toBeNull();
+  it('beyond the retry budget → null (budget exhausted)', () => {
+    expect(nextRetryDelayMs(maxSyncRetries() + 1)).toBeNull();
   });
 
   it('returns null for any attempt count > max', () => {
@@ -55,9 +55,21 @@ describe('isPermanent', () => {
   });
 });
 
-describe('MAX_SYNC_RETRIES', () => {
+describe('maxSyncRetries', () => {
   it('defaults to 5 when env var is unset', () => {
-    // In test env MAX_SYNC_RETRIES env var is not set, so it defaults to 5.
-    expect(MAX_SYNC_RETRIES).toBe(5);
+    delete process.env.MAX_SYNC_RETRIES;
+    expect(maxSyncRetries()).toBe(5);
+  });
+
+  it('honors an env override set after module load', () => {
+    // The whole reason this is a function: dotenv.config() runs in server.ts
+    // after every import has already executed.
+    process.env.MAX_SYNC_RETRIES = '2';
+    try {
+      expect(maxSyncRetries()).toBe(2);
+      expect(nextRetryDelayMs(3)).toBeNull();
+    } finally {
+      delete process.env.MAX_SYNC_RETRIES;
+    }
   });
 });
