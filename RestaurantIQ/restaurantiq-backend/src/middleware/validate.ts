@@ -37,3 +37,24 @@ export function validateBody(schema: ZodTypeAny) {
     next();
   };
 }
+
+/**
+ * Same contract as validateBody, for query strings. Express parses every
+ * query value as a string (or an array, for repeated keys), so schemas passed
+ * here should use z.coerce for numeric/boolean fields and `.strict()` to
+ * reject unknown keys rather than silently ignoring a typo'd param.
+ *
+ * On success, `req.query` is REPLACED with the parsed result so the handler
+ * only ever sees validated, coerced values.
+ */
+export function validateQuery(schema: ZodTypeAny) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const result = schema.safeParse(req.query);
+    if (!result.success) {
+      res.status(400).json({ data: null, error: formatIssues(result.error) });
+      return;
+    }
+    req.query = result.data;
+    next();
+  };
+}

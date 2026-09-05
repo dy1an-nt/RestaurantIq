@@ -20,6 +20,17 @@ rather than to an agent definition. Agent files must point here, not copy from h
   pattern-scrub the event; predicting every field that could hold a secret does
   not work. See `src/config/sentryScrub.ts`.
 
+## Environment & config (continued)
+
+- **`npm run dev` talks to production unless you stop it.** The backend `.env`
+  points at a real Supabase project, so starting the dev server acquires
+  scheduler leadership and begins executing queued retry jobs against live
+  restaurant data. Set `SYNC_SCHEDULER_ENABLED=false` in your local `.env`
+  before running it. The guard exists in `startScheduler()`, it is just not on
+  by default. A job interrupted this way stays `running` forever, because
+  nothing reaps that state: `findDueRetryJobs` only returns `pending_retry`,
+  so every other failure path self-heals on a timer and this one does not.
+
 ## Supabase / PostgREST
 
 - **Embed shape depends on cardinality.** A to-one (many-to-one) embed returns an **object**;

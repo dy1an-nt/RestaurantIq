@@ -76,9 +76,16 @@ const buildMockOrders = (): DoorDashOrder[] => {
   // 12 orders across the last 6 days, 2/day, with varied baskets.
   for (let day = 0; day < 6; day++) {
     for (let n = 0; n < 2; n++) {
+      const now = new Date();
       const orderedAt = new Date();
       orderedAt.setDate(orderedAt.getDate() - day);
       orderedAt.setHours(11 + n * 7, 30, 0, 0); // lunch + dinner
+      // Today's dinner slot (18:30) can land after the real current instant
+      // depending on when the test/sandbox pull runs. refreshDailySummaries
+      // now bounds its recompute range with an upper timestamp (migration
+      // 027's window support), so a synthetic order timestamped in the future
+      // would silently fall outside every window. Clamp to "now" instead.
+      if (orderedAt.getTime() > now.getTime()) orderedAt.setTime(now.getTime());
 
       // Rotate which items are in this basket so analytics aren't flat.
       const picks = [

@@ -137,7 +137,7 @@ describe('upsertOrders', () => {
 
   it('inserts new orders + line items linked to the right menu item and order', async () => {
     const map = await seedCatalog(['burger', 'fries']);
-    const count = await upsertOrders(
+    const { count } = await upsertOrders(
       [order('o-1', [['burger', 2, 1295], ['fries', 1, 695]])],
       map,
       'doordash',
@@ -167,8 +167,8 @@ describe('upsertOrders', () => {
     const map = await seedCatalog(['burger']);
     const orders = [order('o-1', [['burger', 1, 1295]])];
 
-    const first = await upsertOrders(orders, map, 'doordash');
-    const second = await upsertOrders(orders, map, 'doordash');
+    const { count: first } = await upsertOrders(orders, map, 'doordash');
+    const { count: second } = await upsertOrders(orders, map, 'doordash');
 
     expect(first).toBe(1);
     expect(second).toBe(0); // nothing new
@@ -180,7 +180,7 @@ describe('upsertOrders', () => {
     const map = await seedCatalog(['burger']);
     await upsertOrders([order('o-1', [['burger', 1, 1295]])], map, 'doordash');
 
-    const count = await upsertOrders(
+    const { count } = await upsertOrders(
       [order('o-1', [['burger', 1, 1295]]), order('o-2', [['burger', 3, 1295]])],
       map,
       'doordash',
@@ -192,7 +192,7 @@ describe('upsertOrders', () => {
 
   it('drops line items whose menu_item_external_id is not in the catalog map', async () => {
     const map = await seedCatalog(['burger']); // 'ghost' intentionally absent
-    const count = await upsertOrders(
+    const { count } = await upsertOrders(
       [order('o-1', [['burger', 1, 1295], ['ghost', 1, 999]])],
       map,
       'doordash',
@@ -225,14 +225,14 @@ describe('upsertOrders', () => {
   });
 
   it('returns 0 for an empty order list', async () => {
-    expect(await upsertOrders([], new Map(), 'doordash')).toBe(0);
+    expect((await upsertOrders([], new Map(), 'doordash')).count).toBe(0);
   });
 
   // ── Legacy serial fallback path: orders with no external_id ────────────────
   // (Square's Payments-API path; deduped by ordered_at + total_cents instead.)
   it('inserts an external_id-less order and links its items via the fallback path', async () => {
     const map = await seedCatalog(['burger'], 'square');
-    const count = await upsertOrders(
+    const { count } = await upsertOrders(
       [order(undefined as any, [['burger', 2, 1295]], { source: 'square' })],
       map,
       'square',
@@ -255,8 +255,8 @@ describe('upsertOrders', () => {
       }),
     ];
 
-    expect(await upsertOrders(noId, map, 'square')).toBe(1);
-    expect(await upsertOrders(noId, map, 'square')).toBe(0); // same time+total → deduped
+    expect((await upsertOrders(noId, map, 'square')).count).toBe(1);
+    expect((await upsertOrders(noId, map, 'square')).count).toBe(0); // same time+total → deduped
     expect(db.__rows('orders')).toHaveLength(1);
     expect(db.__rows('order_items')).toHaveLength(1);
   });
@@ -294,7 +294,7 @@ describe('refreshDailySummaries', () => {
 
   it('aggregates quantity, revenue, and order counts per (item, date)', async () => {
     const map = await ingestOneDay();
-    await refreshDailySummaries(REST, NOW);
+    await refreshDailySummaries(REST, {}, NOW);
 
     const summaries = db.__rows('daily_summaries');
     const burger = summaries.find((s) => s.menu_item_id === map.get('burger'));
@@ -318,7 +318,7 @@ describe('refreshDailySummaries', () => {
 
   it('updates summaries in place on re-run — metrics do not inflate', async () => {
     const map = await seedAndOrder();
-    await refreshDailySummaries(REST, NOW);
+    await refreshDailySummaries(REST, {}, NOW);
     const before = db.__rows('daily_summaries').length;
 
     // Re-running ingestion of the SAME orders, then refreshing again.
@@ -327,7 +327,7 @@ describe('refreshDailySummaries', () => {
       map,
       'doordash',
     );
-    await refreshDailySummaries(REST, NOW);
+    await refreshDailySummaries(REST, {}, NOW);
 
     const summaries = db.__rows('daily_summaries');
     expect(summaries).toHaveLength(before); // no new summary rows
@@ -337,15 +337,38 @@ describe('refreshDailySummaries', () => {
 
   it('prunes stale summary rows that no longer have backing orders', async () => {
     await seedAndOrder();
-    await refreshDailySummaries(REST, NOW);
+    await refreshDailySummaries(REST, {}, NOW);
     expect(db.__rows('daily_summaries').length).toBeGreaterThan(0);
 
     // Wipe the orders, then refresh: summaries in the window should be cleared.
     db.__tables.orders = [];
     db.__tables.order_items = [];
-    await refreshDailySummaries(REST, NOW);
+    await refreshDailySummaries(REST, {}, NOW);
 
     expect(db.__rows('daily_summaries')).toHaveLength(0);
+  });
+
+  it('an explicit older range with no orders does not wipe the steady-state window (bounded delete)', async () => {
+    // Seed the steady-state (last 30 days) window with real summaries.
+    await seedAndOrder();
+    await refreshDailySummaries(REST, {}, NOW);
+    const before = db.__rows('daily_summaries');
+    expect(before.length).toBeGreaterThan(0);
+
+    // Recompute an explicit, non-trailing range (days 60-90 back) that has no
+    // orders at all. Before the fix, the no-orders delete path used
+    // `.gte('date', sinceDate)` with no upper bound, so calling it with an old
+    // `from` deleted every summary from that date forward — including the
+    // steady-state window seeded above. Every delete must now also carry
+    // `.lte('date', to)` so it only touches the requested range.
+    await refreshDailySummaries(
+      REST,
+      { from: new Date('2026-02-01T00:00:00.000Z'), to: new Date('2026-02-20T00:00:00.000Z') },
+      NOW,
+    );
+
+    const after = db.__rows('daily_summaries');
+    expect(after).toEqual(before);
   });
 
   it('aggregates across sources into the same date bucket', async () => {
@@ -368,12 +391,140 @@ describe('refreshDailySummaries', () => {
       'doordash',
     );
 
-    await refreshDailySummaries(REST, NOW);
+    await refreshDailySummaries(REST, {}, NOW);
 
     const onDate = db.__rows('daily_summaries').filter((s) => s.date === '2026-05-21');
     // Two distinct menu items → two summary rows, both present (source-agnostic).
     expect(onDate).toHaveLength(2);
     expect(onDate.reduce((s, r) => s + r.total_revenue_cents, 0)).toBe(2200);
+  });
+});
+
+describe('refreshDailySummaries: coverage bootstrap / single-run / backdated top-up', () => {
+  // Same fixed-clock rationale as the block above: the window must not slide
+  // with the calendar.
+  const NOW = new Date('2026-05-22T00:00:00.000Z');
+  const BOOTSTRAP_DAYS = 90;
+  const MENU_ITEM_ID = 'menu-item-1';
+
+  const daysAgoDate_ = (n: number): string => {
+    const d = new Date(NOW);
+    d.setUTCDate(d.getUTCDate() - n);
+    return d.toISOString().split('T')[0];
+  };
+  const daysAgoIso_ = (n: number): string => `${daysAgoDate_(n)}T12:00:00.000Z`;
+
+  /** Seed a bare orders + order_items row directly, bypassing upsertOrders —
+   * these tests exercise recomputeRange's read side, not the write-dedup path
+   * (that's covered by the upsertOrders describe block above). */
+  function seedRawOrder(id: string, daysAgo: number) {
+    db.__seed('orders', [
+      {
+        id,
+        restaurant_id: REST,
+        source: 'doordash',
+        total_cents: 1000,
+        ordered_at: daysAgoIso_(daysAgo),
+        external_id: id,
+      },
+    ]);
+    db.__seed('order_items', [
+      { id: `${id}-oi`, order_id: id, menu_item_id: MENU_ITEM_ID, quantity: 1, unit_price_cents: 1000 },
+    ]);
+  }
+
+  it('bootstraps full 90-day coverage on the first sync and writes the watermark', async () => {
+    db.__seed('restaurants', [{ id: REST }]); // no summaries_covered_from yet
+
+    // Orders spanning the full 90-day bootstrap window.
+    seedRawOrder('o-89', 89);
+    seedRawOrder('o-60', 60);
+    seedRawOrder('o-45', 45);
+    seedRawOrder('o-20', 20);
+    seedRawOrder('o-5', 5);
+
+    // Pre-existing summaries only for the last 30 days, as if this restaurant
+    // had been running under the old steady-state-only behavior.
+    db.__seed('daily_summaries', [
+      { id: 'ds-20', restaurant_id: REST, menu_item_id: MENU_ITEM_ID, date: daysAgoDate_(20), total_quantity: 1, total_revenue_cents: 1000, total_orders: 1 },
+      { id: 'ds-5', restaurant_id: REST, menu_item_id: MENU_ITEM_ID, date: daysAgoDate_(5), total_quantity: 1, total_revenue_cents: 1000, total_orders: 1 },
+    ]);
+
+    await refreshDailySummaries(REST, {}, NOW);
+
+    const dates = db.__rows('daily_summaries').map((s) => s.date).sort();
+    expect(dates).toEqual(
+      [daysAgoDate_(89), daysAgoDate_(60), daysAgoDate_(45), daysAgoDate_(20), daysAgoDate_(5)].sort(),
+    );
+
+    const rest = db.__rows('restaurants').find((r) => r.id === REST);
+    expect(rest.summaries_covered_from).toBe(daysAgoDate_(BOOTSTRAP_DAYS));
+  });
+
+  it('does not re-run the wide bootstrap query on a second sync', async () => {
+    db.__seed('restaurants', [{ id: REST }]);
+    seedRawOrder('o-89', 89);
+    seedRawOrder('o-5', 5);
+
+    await refreshDailySummaries(REST, {}, NOW); // bootstrap sync
+    db.__clearCalls();
+
+    await refreshDailySummaries(REST, {}, NOW); // second sync, should be steady-state only
+
+    const target = new Date(NOW);
+    target.setUTCDate(target.getUTCDate() - BOOTSTRAP_DAYS);
+    const bootstrapFromIso = target.toISOString();
+
+    const wideOrderQueries = db.__calls().filter(
+      (c) =>
+        c.table === 'orders' &&
+        c.op === 'select' &&
+        c.filters.some((f) => f.kind === 'gte' && f.col === 'ordered_at' && f.val === bootstrapFromIso),
+    );
+    expect(wideOrderQueries).toHaveLength(0);
+  });
+
+  it('tops up a backdated order without disturbing the steady-state window', async () => {
+    // Already bootstrapped: watermark is set, so this sync takes the
+    // steady-state + top-up path, not the bootstrap path.
+    db.__seed('restaurants', [{ id: REST, summaries_covered_from: daysAgoDate_(BOOTSTRAP_DAYS) }]);
+
+    // Existing steady-state order + summary (last 30 days).
+    seedRawOrder('o-recent', 5);
+    db.__seed('daily_summaries', [
+      { id: 'ds-recent', restaurant_id: REST, menu_item_id: MENU_ITEM_ID, date: daysAgoDate_(5), total_quantity: 1, total_revenue_cents: 1000, total_orders: 1 },
+    ]);
+
+    // A newly-inserted, backdated order (60 days ago — outside the 30-day
+    // steady-state window but inside the 90-day bootstrap floor).
+    const map = await upsertCatalog([menuRow({ external_id: 'burger' })], 'doordash');
+    const { insertedDates } = await upsertOrders(
+      [order('o-backdated', [['burger', 2, 500]], { ordered_at: daysAgoIso_(60) })],
+      map,
+      'doordash',
+    );
+    expect(insertedDates).toEqual([daysAgoDate_(60)]);
+
+    await refreshDailySummaries(REST, { insertedOrderDates: insertedDates }, NOW);
+
+    const summaries = db.__rows('daily_summaries');
+
+    const backdated = summaries.find((s) => s.date === daysAgoDate_(60));
+    expect(backdated).toMatchObject({
+      menu_item_id: map.get('burger'),
+      total_quantity: 2,
+      total_revenue_cents: 1000,
+      total_orders: 1,
+    });
+
+    // Steady-state (last-30-days) row is untouched by the top-up.
+    const recent = summaries.find((s) => s.date === daysAgoDate_(5));
+    expect(recent).toMatchObject({
+      menu_item_id: MENU_ITEM_ID,
+      total_quantity: 1,
+      total_revenue_cents: 1000,
+      total_orders: 1,
+    });
   });
 });
 
