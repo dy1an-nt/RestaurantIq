@@ -140,6 +140,92 @@ export const ensureFreshSquareToken = async (restaurant: SquareCreds): Promise<s
 };
 
 /**
+ * Last successful Square sync for this restaurant, or null if it has never
+ * completed one. This is the watermark an incremental orders pull resumes from.
+ *
+ * Best effort: a failed lookup returns null, which ordersStartAt treats as a
+ * first sync and bounds accordingly. That errs toward re-fetching orders we
+ * already have, which dedup absorbs, rather than skipping a window, which
+ * nothing ever revisits.
+ */
+const loadOrdersWatermark = async (restaurantId: string): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from('integration_sync_status')
+    .select('last_success_at')
+    .eq('restaurant_id', restaurantId)
+    .eq('provider', 'square')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[square] watermark lookup failed:', error.message);
+    return null;
+  }
+  return data?.last_success_at ?? null;
+};
+
+/**
+ * How far back before the watermark to re-request orders.
+ *
+ * Square's `closed_at` can lag when an order becomes queryable, our clock and
+ * theirs drift, and a sync that died mid-pagination persisted only part of its
+ * window. One day of overlap covers all three.
+ */
+export const ORDERS_OVERLAP_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How much history a restaurant's FIRST sync pulls.
+ *
+ * Deliberately bounded, and deliberately modest. A first sync that exceeds
+ * INGEST_PAGE_BUDGET_MS or MAX_ORDER_PAGES throws, which writes no watermark,
+ * so the next attempt re-requests the identical window and fails identically.
+ * Unlike a later sync, there is nothing to fall back to: the account never
+ * recovers on its own. The bound therefore has to sit below what the budget can
+ * actually walk for a busy restaurant, not merely below what sounds generous.
+ * At 150 to 200 orders a day, a year is 55k to 73k orders, past what 75s and
+ * 500 pages can carry.
+ *
+ * 90 days is three times the trailing window refreshDailySummaries aggregates
+ * (30 days) and covers week-over-week trends and time-of-day heatmaps outright.
+ * Raise it only alongside a chunked backfill that persists partial progress.
+ */
+export const FIRST_SYNC_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Decide the earliest `closed_at` to request orders from.
+ *
+ * Square's searchOrders was unfiltered, so every sync re-walked the
+ * restaurant's entire completed-order history. Returning a start time here is
+ * what makes the pull incremental.
+ *
+ * The two error directions are not symmetric, and that drives the policy.
+ * Re-pulling an order already stored costs one row in a dedup SELECT, because
+ * upsertOrders skips (restaurant_id, source, external_id) it already has.
+ * Missing an order loses it permanently, because nothing ever goes back for
+ * that window. So every ambiguous case here resolves toward pulling more.
+ *
+ * @param lastSuccessAt - ISO timestamp of the last successful sync, or null if
+ *                        this restaurant has never completed one.
+ * @returns an RFC 3339 timestamp to pull orders from.
+ */
+export const ordersStartAt = (lastSuccessAt: string | null): string => {
+  const now = Date.now();
+  const parsed = lastSuccessAt ? new Date(lastSuccessAt).getTime() : NaN;
+
+  // Never synced, or a watermark we cannot parse. An unparseable value is
+  // treated as absent rather than as zero: resuming from the epoch would be
+  // the unbounded walk this function exists to avoid.
+  if (!Number.isFinite(parsed)) {
+    return new Date(now - FIRST_SYNC_LOOKBACK_MS).toISOString();
+  }
+
+  // Clamp forward watermarks. A clock skew that puts last_success_at in the
+  // future would otherwise ask Square for orders closed after now, which
+  // returns nothing and silently stops ingesting.
+  const start = Math.min(parsed - ORDERS_OVERLAP_MS, now - ORDERS_OVERLAP_MS);
+  return new Date(start).toISOString();
+};
+
+/**
  * Main ingestion entry point.
  * Pulls catalog → upserts menu_items, pulls orders (with payment fallback) →
  * upserts orders + order_items, then rebuilds daily_summaries.
@@ -189,6 +275,11 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
   const externalToInternal = await upsertCatalog(catalogRows, 'square');
 
   // 2. Orders
+  // Resume from the last successful sync instead of re-walking all history.
+  // The SDK requires the sort field to match the filtered timestamp, so
+  // closedAt pairs with the CLOSED_AT sort already in this query; changing one
+  // without the other makes Square reject the request.
+  const ordersStart = ordersStartAt(await loadOrdersWatermark(restaurantId));
   let orderRows: NormalizedOrder[] = [];
   try {
     orderRows = await collectPages<NormalizedOrder>(
@@ -198,7 +289,10 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
           locationIds: [locationId],
           cursor,
           query: {
-            filter: { stateFilter: { states: ['COMPLETED'] } },
+            filter: {
+              stateFilter: { states: ['COMPLETED'] },
+              dateTimeFilter: { closedAt: { startAt: ordersStart } },
+            },
             sort: { sortField: 'CLOSED_AT', sortOrder: 'DESC' },
           },
         });

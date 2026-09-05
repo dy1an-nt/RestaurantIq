@@ -80,6 +80,23 @@ rather than to an agent definition. Agent files must point here, not copy from h
   cap. Size the cheap wall-clock bound for safety and put the page cap far out of
   reach of real data. (`MAX_ORDER_PAGES` vs `MAX_PAGES_PER_ENDPOINT` in
   `services/square/paginate.ts`.)
+- **A first run that cannot succeed never bootstraps itself.** A resumable job
+  that persists its watermark only on success has no fallback on attempt one:
+  if the initial window exceeds the time or page budget, it throws, writes no
+  watermark, and the next attempt repeats it exactly. Later syncs degrade
+  gracefully, the first does not. Size the initial window against what the
+  budget can actually walk for a busy account, not against what sounds
+  generous, or persist partial progress. (`FIRST_SYNC_LOOKBACK_MS` in
+  `services/square/ingestSquare.ts`.)
+- **A date-filtered incremental pull cannot see backdated records.** Resuming
+  from `last_success_at` minus an overlap only catches what the provider makes
+  queryable within that overlap. An order whose `closed_at` is indexed later
+  than the window has already moved past is missed permanently, because nothing
+  requests that range again. The overlap sets how much lateness is tolerated,
+  so it is a data-completeness decision, not a performance knob. A periodic full
+  reconciliation is the only thing that actually closes the hole.
+  (`ORDERS_OVERLAP_MS` in `services/square/ingestSquare.ts`; the same applies to
+  any DoorDash equivalent.)
 - **A partial pull that reports success is worse than a failed one.** Swallowing a
   paging error and continuing records a green sync over silently incomplete data.
   Throw and let the retry budget handle it. Check that the thrown message cannot
