@@ -3,12 +3,37 @@ import { z } from 'zod';
 import { supabase } from '../db';
 import { authMiddleware } from '../middleware/auth';
 import { requireRestaurant } from '../middleware/requireRestaurant';
-import { validateBody } from '../middleware/validate';
+import { validateBody, validateQuery } from '../middleware/validate';
+import { resolveWindow, windowQuerySchema, WindowQuery } from '../lib/analyticsWindow';
 import { analyzeMargins, MarginAnalysisError } from '../services/marginAnalysisService';
 import {
   analyzeChannelMargins,
   ChannelMarginError,
 } from '../services/channelMarginService';
+
+/**
+ * Page a full-table read with an explicit order + `.range()`, so the read
+ * cannot be silently truncated by PostgREST's per-request row cap. Mirrors
+ * services/ingestion/persistence.ts's selectPaged — kept local here since
+ * this route reads with different filter shapes and that module is scoped to
+ * the ingestion write path.
+ */
+const DASHBOARD_PAGE_SIZE = 1000;
+async function selectAllPaged<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  const results: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await build(from, from + DASHBOARD_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as T[];
+    results.push(...rows);
+    if (rows.length < DASHBOARD_PAGE_SIZE) break;
+    from += DASHBOARD_PAGE_SIZE;
+  }
+  return results;
+}
 
 // PostgREST returns a many-to-one embed as an object; older client versions
 // returned an array. Accept both shapes and unwrap with unwrapEmbed().
@@ -63,40 +88,90 @@ const deliveryEconomicsSchema = z
   );
 
 // ---------------------------------------------------------------------------
-// GET /api/analytics/dashboard
-// Returns revenueTrend, topItems, and hourlyDistribution for the last 30 days.
+// GET /api/analytics/dashboard?days=7|30|90 (default 30)
+// Returns revenueTrend, topItems, hourlyDistribution, and a meta block
+// describing the resolved window, for the selected trailing window.
 // All aggregation is done in TypeScript after fetching from Supabase.
 // ---------------------------------------------------------------------------
-router.get('/dashboard', async (req: Request, res: Response) => {
-  const since = new Date();
-  since.setDate(since.getDate() - 30);
-  const sinceStr = since.toISOString().split('T')[0];
+router.get(
+  '/dashboard',
+  validateQuery(windowQuerySchema),
+  async (req: Request, res: Response) => {
+  // Resolve "now" once and thread it through every boundary below — reading
+  // the clock twice risks the orders and daily_summaries filters disagreeing
+  // by however long the handler took to run between the two reads.
+  const now = new Date();
+  const { days, from, to, fromIso } = resolveWindow(
+    (req.validatedQuery as WindowQuery).days,
+    now,
+  );
+  const nowIso = now.toISOString();
 
-  // Fetch daily_summaries with embedded menu_items for the last 30 days.
-  const { data: summaries, error: sErr } = await supabase
-    .from('daily_summaries')
-    .select('menu_item_id, date, total_quantity, total_revenue_cents, total_orders, menu_items(name, category)')
-    .eq('restaurant_id', req.restaurantId!)
-    .gte('date', sinceStr)
-    .order('date', { ascending: true });
-
-  if (sErr) {
+  // Fetch daily_summaries with embedded menu_items for the window. Paged with
+  // an explicit order + .range() — PostgREST silently caps an unranged
+  // select at ~1000 rows, and a 90-day window for a busy restaurant can
+  // exceed that with no error.
+  let rows: DailySummaryRow[];
+  try {
+    rows = await selectAllPaged<DailySummaryRow>((from_, to_) =>
+      supabase
+        .from('daily_summaries')
+        .select(
+          'menu_item_id, date, total_quantity, total_revenue_cents, total_orders, menu_items(name, category)',
+        )
+        .eq('restaurant_id', req.restaurantId!)
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: true })
+        .range(from_, to_),
+    );
+  } catch {
     return res.status(500).json({ data: null, error: 'Failed to fetch daily summaries' });
   }
 
-  // Fetch orders for the last 30 days — only the two columns we need.
-  const { data: orders, error: oErr } = await supabase
-    .from('orders')
-    .select('ordered_at, total_cents')
-    .eq('restaurant_id', req.restaurantId!)
-    .gte('ordered_at', since.toISOString());
-
-  if (oErr) {
+  // Fetch orders for the window — only the two columns we need. Both this
+  // filter and the daily_summaries filter above derive from the SAME `from`
+  // (and both are bounded by the same `now`), so hourlyDistribution and
+  // revenueTrend cover identical spans and AOV divides across a matched range.
+  let orderRows: OrderRow[];
+  try {
+    orderRows = await selectAllPaged<OrderRow>((from_, to_) =>
+      supabase
+        .from('orders')
+        .select('ordered_at, total_cents')
+        .eq('restaurant_id', req.restaurantId!)
+        .gte('ordered_at', fromIso)
+        .lte('ordered_at', nowIso)
+        .order('ordered_at', { ascending: true })
+        .range(from_, to_),
+    );
+  } catch {
     return res.status(500).json({ data: null, error: 'Failed to fetch orders' });
   }
 
-  const rows = (summaries ?? []) as DailySummaryRow[];
-  const orderRows = (orders ?? []) as OrderRow[];
+  // Earliest order date for this restaurant, scoped to the tenant — an
+  // unscoped "oldest order" query would leak another tenant's history into
+  // this restaurant's meta block.
+  const { data: earliestRows, error: earliestErr } = await supabase
+    .from('orders')
+    .select('ordered_at')
+    .eq('restaurant_id', req.restaurantId!)
+    .order('ordered_at', { ascending: true })
+    .limit(1);
+
+  if (earliestErr) {
+    return res.status(500).json({ data: null, error: 'Failed to fetch orders' });
+  }
+
+  const earliestOrderedAt = (earliestRows as { ordered_at: string }[] | null)?.[0]?.ordered_at ?? null;
+  const earliestDataDate = earliestOrderedAt ? earliestOrderedAt.split('T')[0] : null;
+  const daysAvailable = earliestDataDate
+    ? Math.floor(
+        (new Date(`${to}T00:00:00.000Z`).getTime() -
+          new Date(`${earliestDataDate > from ? earliestDataDate : from}T00:00:00.000Z`).getTime()) /
+          (24 * 60 * 60 * 1000),
+      ) + 1
+    : 0;
 
   // --- revenueTrend: group by date, sum total_revenue_cents ----------------
   const trendMap = new Map<string, number>();
@@ -156,7 +231,18 @@ router.get('/dashboard', async (req: Request, res: Response) => {
   const hourlyDistribution = Array.from(heatMap.values());
 
   return res.json({
-    data: { revenueTrend, topItems, hourlyDistribution },
+    data: {
+      revenueTrend,
+      topItems,
+      hourlyDistribution,
+      meta: {
+        days,
+        from,
+        to,
+        earliest_data_date: earliestDataDate,
+        days_available: daysAvailable,
+      },
+    },
     error: null,
   });
 });

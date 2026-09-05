@@ -184,9 +184,11 @@ export const ORDERS_OVERLAP_MS = 24 * 60 * 60 * 1000;
  * At 150 to 200 orders a day, a year is 55k to 73k orders, past what 75s and
  * 500 pages can carry.
  *
- * 90 days is three times the trailing window refreshDailySummaries aggregates
- * (30 days) and covers week-over-week trends and time-of-day heatmaps outright.
- * Raise it only alongside a chunked backfill that persists partial progress.
+ * 90 days matches refreshDailySummaries's one-time coverage bootstrap (also 90
+ * days, migration 027), so a restaurant's first sync and its first summary
+ * recompute cover the same history, and it covers week-over-week trends and
+ * time-of-day heatmaps outright. Raise it only alongside a chunked backfill
+ * that persists partial progress.
  */
 export const FIRST_SYNC_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -334,10 +336,10 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
     }
   }
 
-  const orderCount = await upsertOrders(orderRows, externalToInternal, 'square');
+  const { count: orderCount, insertedDates } = await upsertOrders(orderRows, externalToInternal, 'square');
 
   // 3. Recompute daily_summaries (source-agnostic — aggregates every channel).
-  await refreshDailySummaries(restaurantId);
+  await refreshDailySummaries(restaurantId, { insertedOrderDates: insertedDates });
 
   // 4. Regenerate alerts from the freshly rebuilt summaries (fire-and-forget).
   await runAlerts(restaurantId, 'square');
