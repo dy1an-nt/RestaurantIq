@@ -1,6 +1,6 @@
 # Database Schema
 
-RestaurantIQ uses PostgreSQL via Supabase. **23 forward-only SQL migrations** define the full schema — no ORM, no auto-generated tables. Every index, constraint, and relationship is explicit and visible in `restaurantiq-backend/migrations/`.
+RestaurantIQ uses PostgreSQL via Supabase. Forward-only SQL migrations in `restaurantiq-backend/migrations/` define the full schema, with no ORM and no auto-generated tables. Every index, constraint, and relationship is explicit and visible in `restaurantiq-backend/migrations/`.
 
 All monetary values are stored as **integer cents** (e.g. `price_cents`, `total_cents`) to eliminate floating-point drift. Display formatting happens only in the frontend.
 
@@ -239,7 +239,7 @@ Retries live entirely in `sync_jobs` as rows with `status = 'pending_retry'` and
 
 ### Forward-only migrations, no ORM
 
-All 23 migrations are plain SQL files applied in order by a custom runner (`src/scripts/migrate.ts`) that records each name in a `schema_migrations` table. No ORM is used anywhere in the backend. Every index, constraint, and query plan is written explicitly and visible in the source. Reading the migrations in order is reading the full history of every schema decision.
+Every migration is a plain SQL file applied in order by a custom runner (`src/scripts/migrate.ts`) that records each name in a `schema_migrations` table. No ORM is used anywhere in the backend. Every index, constraint, and query plan is written explicitly and visible in the source. Reading the migrations in order is reading the full history of every schema decision.
 
 ### OAuth tokens encrypted at rest
 

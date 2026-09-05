@@ -13,6 +13,7 @@ const publicDocs = [
   'RestaurantIQ/README.md',
   'RestaurantIQ/docs/README.md',
   'RestaurantIQ/docs/known-limitations.md',
+  'RestaurantIQ/docs/schema.md',
 ];
 
 const docs = new Map(publicDocs.map((file) => [file, read(file)]));
@@ -25,7 +26,7 @@ const fail = (message) => errors.push(message);
 // inventory without requiring the README to be edited after every new test.
 const volatileClaims = [
   { label: 'test total', pattern: /\b\d+\s+(?:test suites?|tests?)\b/gi },
-  { label: 'migration total', pattern: /\b\d+\s+migrations?\b/gi },
+  { label: 'migration total', pattern: /\b\d+\s+(?:[\w-]+\s+){0,3}migrations?\b/gi },
   { label: 'bug total', pattern: /\b\d+\s+(?:documented\s+)?bugs?\b/gi },
   {
     label: 'coverage percentage',
@@ -147,6 +148,40 @@ for (const match of rootReadme.matchAll(/^cd\s+([^\s#]+)$/gm)) {
   }
 }
 
+// AGENTS.md and CLAUDE.md are two entrypoints for the same repo. They diverge
+// only in their headers (CLAUDE.md carries an `@` import; AGENTS.md tells Codex
+// to read the nested file explicitly). Everything else is duplicated on purpose,
+// so it needs a guard or it drifts.
+const SHARED_START = '<!-- shared:root-instructions:start -->';
+const SHARED_END = '<!-- shared:root-instructions:end -->';
+
+const sharedRegion = (file) => {
+  const contents = read(file);
+  const start = contents.indexOf(SHARED_START);
+  const end = contents.indexOf(SHARED_END);
+  if (start === -1 || end === -1 || end < start) {
+    fail(`${file}: missing or malformed shared:root-instructions markers`);
+    return null;
+  }
+  return contents.slice(start + SHARED_START.length, end);
+};
+
+const rootEntrypoints = ['AGENTS.md', 'CLAUDE.md'];
+const sharedRegions = rootEntrypoints.map(sharedRegion);
+if (sharedRegions.every((region) => region !== null)) {
+  if (sharedRegions[0] !== sharedRegions[1]) {
+    fail(
+      `${rootEntrypoints.join(' and ')} shared:root-instructions blocks differ. They must be byte-identical; copy one over the other.`,
+    );
+  }
+}
+
+// The Codex entrypoint has to be a real file. It was a symlink to the nested
+// CLAUDE.md once, which silently hid every line of this file from Codex.
+if (fs.lstatSync(path.join(root, 'AGENTS.md')).isSymbolicLink()) {
+  fail('AGENTS.md: must be a regular file, not a symlink');
+}
+
 if (errors.length > 0) {
   console.error('Documentation accuracy check failed:');
   for (const error of errors) console.error(`- ${error}`);
@@ -163,3 +198,6 @@ console.log(
 );
 console.log(`Local Markdown links checked: ${checkedLinks}`);
 console.log(`README setup paths checked: ${checkedSetupPaths}`);
+console.log(
+  `Root entrypoints in sync: ${rootEntrypoints.join(' + ')} (${sharedRegions[0]?.length ?? 0} shared bytes)`,
+);

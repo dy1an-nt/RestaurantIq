@@ -16,7 +16,7 @@ Companion docs:
 | ----- | -------------- | ------------ | -------------------- |
 | Application data (orders, menu items, summaries, alerts) | Supabase Postgres | Supabase automated backups + manual dumps | Total - this is the product |
 | Database schema | Supabase Postgres | Git (`migrations/`) | Recoverable from migrations |
-| Backend secrets (API keys, encryption keys) | Railway env vars | **Operator-held password manager** | Integrations + encrypted tokens unreadable |
+| Backend secrets (API keys, encryption keys) | Render env vars | **Operator-held password manager** | Integrations + encrypted tokens unreadable |
 | Frontend config | Vercel env vars | Git `.env.example` + password manager | Frontend points at wrong/no backend |
 | Integration tokens (Square/DoorDash) | Supabase, encrypted at rest | Same as application data | Re-auth required if encryption key also lost |
 
@@ -125,7 +125,7 @@ project** flow (see below) and run the same smoke queries.
 3. Restore. For safety, restore to a **new project** first, validate, then cut
    over - avoid overwriting the only surviving copy until the restore is proven.
 4. If you restored to a new project, update `SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, and `DATABASE_URL` in Railway, and
+   `SUPABASE_SERVICE_ROLE_KEY`, and `DATABASE_URL` in Render, and
    `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in Vercel, then redeploy both.
 
 **Option B - Restore from a manual `pg_dump`:**
@@ -154,7 +154,7 @@ independently:
   moving the old key into the legacy list.
 
 Recovery procedure:
-1. From the password manager, re-create the variable set in Railway (backend) and
+1. From the password manager, re-create the variable set in Render (backend) and
    Vercel (frontend) using `.env.example` as the checklist.
 2. Redeploy both services so the new values take effect.
 3. If encryption keys were lost entirely, expect to re-authenticate every
@@ -165,7 +165,7 @@ Recovery procedure:
 If the services (not the data) are lost, both redeploy from git - they are
 stateless:
 
-1. **Backend (Railway):** redeploy the `restaurantiq-backend` service from the
+1. **Backend (Render):** redeploy the `restaurantiq-backend` service from the
    current `main`. Confirm env vars are present, then verify startup (it
    fail-fasts on missing required vars).
 2. **Frontend (Vercel):** redeploy `restaurantiq-frontend` from `main` with
@@ -191,7 +191,7 @@ After any restore + redeploy, confirm the system is actually healthy:
 
 | Symptom | First check |
 | ------- | ----------- |
-| Backend won't boot | Railway logs - fail-fast prints the missing/invalid env var |
+| Backend won't boot | Render logs - fail-fast prints the missing/invalid env var |
 | 500s on AI endpoints | `ANTHROPIC_API_KEY` set? Rate limit (429, not 500)? Anthropic status? |
 | Frontend can't reach API | `VITE_API_URL` correct + redeployed? `FRONTEND_URL` allowlist? |
 | Integrations failing after restore | Token encryption key present and matching? |

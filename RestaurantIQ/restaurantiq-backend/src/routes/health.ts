@@ -4,7 +4,7 @@ import { Router } from 'express';
  * Health check endpoint (Sprint N).
  *
  * Returns a plain status object (NOT the `{ data, error }` envelope) suitable
- * for platform health checks (Railway) and uptime monitors:
+ * for platform health checks (Render) and uptime monitors:
  *
  *   { "status": "ok", "timestamp": "<ISO>", "version": "<app version>" }
  *

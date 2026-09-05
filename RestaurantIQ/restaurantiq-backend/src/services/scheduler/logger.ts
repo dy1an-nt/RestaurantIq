@@ -2,7 +2,7 @@
  * Structured event logger for the distributed sync scheduler (Sprint L+).
  *
  * All scheduler events are emitted as JSON lines to stderr (console.error),
- * which keeps them out of stdout and lets log aggregators (Railway, Datadog,
+ * which keeps them out of stdout and lets log aggregators (Render, Datadog,
  * etc.) parse fields without regex. Every line has at minimum an `event` name
  * and an ISO timestamp so logs can be correlated across instances.
  *

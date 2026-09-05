@@ -2,13 +2,13 @@ name: Uptime
 
 # External uptime monitoring for the deployed backend.
 #
-# Railway's own healthcheck restarts an unhealthy container but never tells
+# Render's own healthcheck restarts an unhealthy container but never tells
 # anyone it happened, so an outage between manual log checks is invisible - the
 # gap recorded in docs/known-limitations.md. This workflow is the outside
 # observer: a process inside the app cannot report that the app is down.
 #
 # Setup (one-time): add a repository variable HEALTH_URL pointing at the
-# deployed health endpoint, e.g. https://<backend>.up.railway.app/health
+# deployed health endpoint, e.g. https://<backend>.onrender.com/health
 #   Settings -> Secrets and variables -> Actions -> Variables -> New variable
 # Without it every run skips, so the workflow is inert until configured.
 #

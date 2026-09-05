@@ -32,7 +32,7 @@ Documentation for how RestaurantIQ is designed, operated, and improved. Start wi
 
 | Doc | What's in it |
 |---|---|
-| [`deployment.md`](deployment.md) | Railway + Vercel deployment guide: env vars, CORS wiring, build/start commands |
+| [`deployment.md`](deployment.md) | Render + Vercel deployment guide: env vars, CORS wiring, build/start commands |
 | [`operations.md`](operations.md) | Backup, recovery, and disaster-recovery runbook |
 
 ## Historical build record
