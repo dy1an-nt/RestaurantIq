@@ -28,8 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Check documentation facts and paths
@@ -43,8 +43,8 @@ jobs:
       run:
         working-directory: RestaurantIQ/restaurantiq-backend
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           # Node 20 hit end-of-life April 2026; 22 is the active LTS and
           # matches the engines pin in both package.jsons.
@@ -70,8 +70,8 @@ jobs:
       run:
         working-directory: RestaurantIQ/restaurantiq-frontend
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

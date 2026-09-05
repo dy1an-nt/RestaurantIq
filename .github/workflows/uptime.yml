@@ -95,7 +95,7 @@ jobs:
         # Runs only when the probe actually failed - not when it was skipped
         # for missing configuration, and not when a previous step errored.
         if: failure() && steps.probe.outputs.healthy == 'false'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           LAST_CODE: ${{ steps.probe.outputs.code }}
           LAST_BODY: ${{ steps.probe.outputs.body }}
