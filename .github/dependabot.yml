@@ -2,30 +2,47 @@
 # first (and only) place a vulnerable dependency surfaces, usually by turning
 # an unrelated PR red. Dependabot raises the bump proactively instead.
 #
-# Weekly, grouped per package so a quiet week produces at most three PRs
-# (backend deps, frontend deps, actions) rather than one PR per package.
+# Grouping strategy, and why it is not `patterns: ["*"]`:
+#
+# A group that catches everything has to satisfy every constraint at once, so
+# one incompatible pair makes the whole PR unresolvable. That is exactly what
+# happened: a group bumped `typescript` to 7 and `@typescript-eslint` to 8.x,
+# which does not support TypeScript 7, and both the backend and frontend PRs
+# died at `npm ci` with ERESOLVE before compiling a line. They also bundled
+# eight major upgrades each (express 4 to 5, react 18 to 19, vite 5 to 8, and
+# more), so even a resolvable version would have been un-reviewable.
+#
+# So: minor and patch updates group into one low-risk PR per ecosystem, and
+# every major gets its own PR. A major is a migration and deserves to be read,
+# tested, and merged on its own.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /RestaurantIQ/restaurantiq-backend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
     groups:
       backend-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /RestaurantIQ/restaurantiq-frontend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
     groups:
       frontend-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 10
     groups:
       github-actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
