@@ -34,6 +34,12 @@ rather than to an agent definition. Agent files must point here, not copy from h
 - **`upsert` + partial unique indexes don't mix.** `onConflict: 'a,b,c'` translates to
   `ON CONFLICT (a,b,c)` without the `WHERE` predicate. Use a regular `UNIQUE` constraint.
   (Migration 008.)
+- **An unranged `select()` is silently truncated.** PostgREST applies a max-rows cap
+  (commonly 1000) and returns a short result with no error, so a full-table read looks
+  complete right up until the table outgrows the cap. Any read whose correctness depends
+  on seeing every row must page with `.range()` and carry an explicit `.order()`, because
+  range paging over an unordered query can repeat or skip rows. (`readLastAttempts` in
+  `services/scheduler/index.ts`.)
 - **Two Supabase clients exist**: `db.ts` (canonical) and a legacy one in `server.ts`
   (used only by `restaurantController.ts`). New code uses `db.ts`. Never add a third.
 
@@ -62,6 +68,18 @@ rather than to an agent definition. Agent files must point here, not copy from h
   truncated, so growth past the cap shows up in logs instead of as missing data.
   (`prioritizeByStaleness` and `SCHEDULER_BATCH_TRUNCATED` in
   `services/scheduler/index.ts`.)
+- **Whatever the rotation sorts on must be written on every path, including the
+  skips.** A least-recently-attempted ordering where the skip path never stamps
+  `last_attempted_at` is worse than no ordering: the work that can never succeed
+  sorts first forever and holds the whole batch, so nothing else runs. If a state
+  is dispatchable, dispatching it counts as an attempt. (`setStatus` in
+  `syncScheduler.ts`.)
+- **A bound a healthy caller can reach is an outage, not a guard.** A page cap
+  sized for the common case turns a large but legitimate account into a permanent
+  failure, because the throw is classified transient and every retry hits the same
+  cap. Size the cheap wall-clock bound for safety and put the page cap far out of
+  reach of real data. (`MAX_ORDER_PAGES` vs `MAX_PAGES_PER_ENDPOINT` in
+  `services/square/paginate.ts`.)
 - **A partial pull that reports success is worse than a failed one.** Swallowing a
   paging error and continuing records a green sync over silently incomplete data.
   Throw and let the retry budget handle it. Check that the thrown message cannot

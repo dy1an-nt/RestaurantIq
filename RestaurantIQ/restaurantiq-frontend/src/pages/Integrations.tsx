@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { relativeTime } from '../lib/format';
 import { useRestaurant } from '../components/restaurant/RestaurantContext';
@@ -335,10 +335,15 @@ const Integrations = () => {
 
   const [health, setHealth] = useState<Record<'square' | 'doordash', ProviderHealth> | null>(null);
 
-  // The signal is optional so children can still call this as `() => void`
-  // after a connect or sync. The polling effect always passes one.
-  const fetchHealth = useCallback(async (signal?: AbortSignal) => {
+  // One controller for every health request of the current restaurant, held in
+  // a ref rather than passed as an argument so the card's post-connect/sync
+  // refetch is covered by the same cancellation as the poll. Passing the signal
+  // in left that path unguarded, since the cards call it as `() => void`.
+  const healthAbort = useRef<AbortController | null>(null);
+
+  const fetchHealth = useCallback(async () => {
     if (!restaurant) return;
+    const signal = healthAbort.current?.signal;
     try {
       const res = await apiFetch('/api/integrations/sync-status', { signal });
       const body = await res.json();
@@ -360,8 +365,9 @@ const Integrations = () => {
   useEffect(() => {
     if (!restaurant) return;
     const controller = new AbortController();
-    void fetchHealth(controller.signal);
-    const id = setInterval(() => void fetchHealth(controller.signal), 30_000);
+    healthAbort.current = controller;
+    void fetchHealth();
+    const id = setInterval(() => void fetchHealth(), 30_000);
     return () => {
       controller.abort();
       clearInterval(id);

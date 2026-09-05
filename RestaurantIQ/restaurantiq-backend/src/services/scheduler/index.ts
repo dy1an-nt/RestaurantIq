@@ -90,6 +90,64 @@ async function concurrentMap<T>(
 const pairKey = (restaurantId: string, provider: string): string =>
   `${restaurantId}:${provider}`;
 
+/** Rows per status page. PostgREST caps an unranged select, so we range explicitly. */
+const STATUS_PAGE_SIZE = 1000;
+
+/** Ceiling on status pages, so a mis-sized page can't loop the tick forever. */
+const MAX_STATUS_PAGES = 50;
+
+/**
+ * Read every (restaurant, provider) attempt timestamp.
+ *
+ * The select MUST be ranged and ordered. An unranged `select()` is silently
+ * truncated by PostgREST's max-rows, and a pair missing from the truncated page
+ * would read as "never attempted" and jump to the head of the batch. That turns
+ * the ordering into noise at exactly the scale it exists for. The explicit
+ * ORDER BY is what makes range paging stable; without it Postgres may repeat or
+ * skip rows across pages.
+ *
+ * Returns null if the read failed or could not be completed, which the caller
+ * treats as "no ordering available" rather than as a partial ordering.
+ */
+const readLastAttempts = async (): Promise<Map<string, number> | null> => {
+  const lastAttempt = new Map<string, number>();
+
+  for (let page = 0; page < MAX_STATUS_PAGES; page++) {
+    const from = page * STATUS_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from('integration_sync_status')
+      .select('restaurant_id, provider, last_attempted_at')
+      .order('restaurant_id', { ascending: true })
+      .order('provider', { ascending: true })
+      .range(from, from + STATUS_PAGE_SIZE - 1);
+
+    if (error) {
+      logEvent('SCHEDULER_PRIORITY_UNAVAILABLE', { error: error.message });
+      return null;
+    }
+
+    const rows = (data ?? []) as Array<{
+      restaurant_id: string;
+      provider: string;
+      last_attempted_at: string | null;
+    }>;
+    for (const r of rows) {
+      lastAttempt.set(
+        pairKey(r.restaurant_id, r.provider),
+        r.last_attempted_at ? new Date(r.last_attempted_at).getTime() : 0,
+      );
+    }
+
+    // A short page is the last page.
+    if (rows.length < STATUS_PAGE_SIZE) return lastAttempt;
+  }
+
+  logEvent('SCHEDULER_PRIORITY_UNAVAILABLE', {
+    error: `status table exceeded ${MAX_STATUS_PAGES} pages`,
+  });
+  return null;
+};
+
 /**
  * Order integrations least-recently-attempted first.
  *
@@ -110,26 +168,8 @@ const prioritizeByStaleness = async <
 ): Promise<T[]> => {
   if (integrations.length === 0) return integrations;
 
-  const { data, error } = await supabase
-    .from('integration_sync_status')
-    .select('restaurant_id, provider, last_attempted_at');
-
-  if (error) {
-    logEvent('SCHEDULER_PRIORITY_UNAVAILABLE', { error: error.message });
-    return integrations;
-  }
-
-  const lastAttempt = new Map<string, number>();
-  for (const r of (data ?? []) as Array<{
-    restaurant_id: string;
-    provider: string;
-    last_attempted_at: string | null;
-  }>) {
-    lastAttempt.set(
-      pairKey(r.restaurant_id, r.provider),
-      r.last_attempted_at ? new Date(r.last_attempted_at).getTime() : 0,
-    );
-  }
+  const lastAttempt = await readLastAttempts();
+  if (!lastAttempt) return integrations;
 
   // Missing row means never attempted, which sorts first.
   return [...integrations].sort(

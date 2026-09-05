@@ -190,19 +190,29 @@ const ensureStatusRow = async (restaurantId: string, provider: Provider) => {
   if (error) console.error('[sync] ensureStatusRow failed:', error.message);
 };
 
-/** Write a terminal status without acquiring the lock (used for skips). */
+/**
+ * Write a terminal status without acquiring the lock (used for skips).
+ *
+ * `last_attempted_at` is stamped here as well as in acquireLock, because a skip
+ * IS an attempt: the scheduler spent a batch slot on this pair. Leaving it null
+ * would pin every disconnected/token_expired integration at the head of the
+ * scheduler's least-recently-attempted ordering forever, which is the tail
+ * starvation prioritizeByStaleness exists to prevent.
+ */
 const setStatus = async (
   restaurantId: string,
   provider: Provider,
   status: SyncStatus,
   error?: string | null,
 ) => {
+  const now = new Date().toISOString();
   const { error: dbErr } = await supabase
     .from('integration_sync_status')
     .update({
       status,
       last_error: error ?? null,
-      updated_at: new Date().toISOString(),
+      last_attempted_at: now,
+      updated_at: now,
     })
     .eq('restaurant_id', restaurantId)
     .eq('provider', provider);

@@ -230,6 +230,18 @@ describe('syncIntegration — respecting integration state', () => {
     expect(ingestSquareMock).not.toHaveBeenCalled();
     expect(outcome).toMatchObject({ skipped: true, reason: 'token_expired' });
   });
+
+  it('stamps last_attempted_at on a skip so the pair does not pin the batch', async () => {
+    // A skip is an attempt: the scheduler spent a batch slot on this pair.
+    // Leaving last_attempted_at null kept every disconnected integration at the
+    // head of the least-recently-attempted ordering forever, which starves the
+    // integrations that can actually sync.
+    await syncIntegration(squareRow({ pos_connected: false }), 'square');
+
+    const skipped = lastUpdate((p) => p.status === 'disconnected', 'integration_sync_status');
+    expect(skipped).toBeDefined();
+    expect(typeof skipped.last_attempted_at).toBe('string');
+  });
 });
 
 describe('syncIntegration — overlap prevention', () => {

@@ -23,11 +23,26 @@
 /**
  * Maximum pages pulled from a single endpoint per ingest.
  *
- * Square returns up to 1000 catalog objects and 500 orders per page, so 50
- * pages is far beyond any real restaurant while still terminating a cursor
- * that never resolves.
+ * The DEADLINE is the real bound. This cap exists only to stop a cursor that
+ * repeats or never resolves, so it must sit far above any legitimate walk:
+ * a cap a real account can reach fails that account permanently, because the
+ * throw is classified transient and every retry hits the same cap.
+ *
+ * A restaurant menu is a few hundred items at Square's 100-per-page default,
+ * so 50 pages is untouchable for the catalog.
  */
 export const MAX_PAGES_PER_ENDPOINT = 50;
+
+/**
+ * Page cap for the orders walk.
+ *
+ * searchOrders is unfiltered by date, so every sync re-walks the restaurant's
+ * entire completed-order history. A busy restaurant passes 50 pages in normal
+ * operation and used to sync fine, well inside the wall-clock budget, so the
+ * orders cap has to be an order of magnitude higher than the catalog's. The
+ * deadline still bounds the wall clock either way.
+ */
+export const MAX_ORDER_PAGES = 500;
 
 /**
  * Wall-clock budget for all pagination in one ingest.
@@ -68,8 +83,12 @@ export const collectPages = async <T>(
 
   do {
     if (now() >= deadline) {
+      // Report the overrun against the deadline actually in force, not against
+      // the module default: callers may pass a tighter one, and an error that
+      // quotes the wrong budget sends an operator to the wrong number.
       throw new Error(
-        `Square ${label} pagination exceeded its ${INGEST_PAGE_BUDGET_MS}ms budget after ${pages} page(s).`,
+        `Square ${label} pagination exceeded its page budget after ${pages} page(s) ` +
+          `(${now() - deadline}ms past the deadline).`,
       );
     }
     if (pages >= maxPages) {

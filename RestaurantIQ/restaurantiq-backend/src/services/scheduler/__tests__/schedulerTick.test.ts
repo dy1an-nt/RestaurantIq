@@ -54,11 +54,15 @@ let mockSyncStatusRows: any[] = [];
 // Supabase mock: supports the scheduler_state upsert AND the restaurants .select().in() chain
 // used when processing retry jobs.
 jest.mock('../../../db', () => {
-  const makeChainable = (finalValue: () => any): any => {
+  const makeChainable = (finalValue: (from?: number, to?: number) => any): any => {
     const proxy: any = {
       upsert: () => Promise.resolve({ error: null }),
       select: () => proxy,
       eq: () => proxy,
+      order: () => proxy,
+      // The status read is range-paged, so the mock slices like PostgREST does.
+      // A short page ends the walk.
+      range: (from: number, to: number) => Promise.resolve(finalValue(from, to)),
       in: () => Promise.resolve(finalValue()),
       then: (resolve: any, reject: any) => Promise.resolve(finalValue()).then(resolve, reject),
     };
@@ -67,10 +71,16 @@ jest.mock('../../../db', () => {
   return {
     supabase: {
       from: (table: string) =>
-        makeChainable(() => {
+        makeChainable((from?: number, to?: number) => {
           if (table === 'restaurants') return { data: mockRestaurantRows, error: null };
           if (table === 'integration_sync_status') {
-            return { data: mockSyncStatusRows, error: null };
+            // PostgREST silently caps an unranged select at max-rows. Emulating
+            // that is what makes the paging test below discriminate.
+            const rows =
+              from === undefined
+                ? mockSyncStatusRows.slice(0, 1000)
+                : mockSyncStatusRows.slice(from, to! + 1);
+            return { data: rows, error: null };
           }
           return { data: [], error: null };
         }),
@@ -337,6 +347,27 @@ describe('runSchedulerTick: batch rotation', () => {
 
     expect(mockSyncIntegration).toHaveBeenCalledTimes(1);
     expect(mockSyncIntegration.mock.calls[0][0].id).toBe('brand-new');
+  });
+
+  it('reads past the first status page instead of being truncated', async () => {
+    // PostgREST caps an unranged select (commonly at 1000 rows). A pair missing
+    // from a truncated page reads as never-attempted and jumps to the head of
+    // the batch, so the read has to page or the ordering inverts at exactly the
+    // scale it exists for. 'deep' is freshly synced but sits on page 2.
+    process.env.SYNC_BATCH_SIZE = '1';
+    mockDiscoverActiveIntegrations.mockResolvedValue([
+      { row: rowFor('deep') as any, provider: 'square' as any },
+      { row: rowFor('stale') as any, provider: 'square' as any },
+    ]);
+    const filler = Array.from({ length: 999 }, (_, i) => statusRow(`filler-${i}`, 30));
+    mockSyncStatusRows = [statusRow('stale', 600), ...filler, statusRow('deep', 1)];
+    expect(mockSyncStatusRows).toHaveLength(1001);
+
+    await runSchedulerTick();
+
+    // Page 2 was read, so 'deep' is known to be fresh and 'stale' goes first.
+    expect(mockSyncIntegration).toHaveBeenCalledTimes(1);
+    expect(mockSyncIntegration.mock.calls[0][0].id).toBe('stale');
   });
 
   it('falls back to discovery order when the status lookup is unavailable', async () => {

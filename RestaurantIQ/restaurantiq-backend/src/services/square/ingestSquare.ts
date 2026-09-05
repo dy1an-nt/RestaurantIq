@@ -12,7 +12,7 @@ import {
   MenuItemRow,
 } from './normalizers';
 import { IngestResult, NormalizedOrder } from '../ingestion/types';
-import { collectPages, INGEST_PAGE_BUDGET_MS } from './paginate';
+import { collectPages, INGEST_PAGE_BUDGET_MS, MAX_ORDER_PAGES } from './paginate';
 import {
   upsertCatalog,
   upsertOrders,
@@ -209,7 +209,9 @@ export const ingestSquare = async (restaurantId: string): Promise<IngestResult> 
         }
         return { items, cursor: result.cursor };
       },
-      { deadline: pageDeadline },
+      // Orders re-walk the full history every sync, so this endpoint needs the
+      // higher cap; the shared deadline is what actually bounds the pull.
+      { deadline: pageDeadline, maxPages: MAX_ORDER_PAGES },
     );
   } catch (err) {
     console.error('[square] searchOrders failed:', (err as Error).message);
