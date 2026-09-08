@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import RevenueTrendChart from '../components/charts/RevenueTrendChart';
 import TopItemsChart from '../components/charts/TopItemsChart';
 import SalesHeatmap from '../components/charts/SalesHeatmap';
 import LastSyncedIndicator from '../components/LastSyncedIndicator';
 import InfoTooltip from '../components/InfoTooltip';
+import WindowSelector, { AnalyticsWindow } from '../components/WindowSelector';
 
 interface RevenueTrendPoint {
   date: string;
@@ -27,19 +28,62 @@ interface HourlyPoint {
   orders: number;
 }
 
+interface DashboardMeta {
+  days: number;
+  from: string;
+  to: string;
+  earliest_data_date: string | null;
+  days_available: number;
+}
+
 interface AnalyticsDashboard {
   revenueTrend: RevenueTrendPoint[];
   topItems: TopItemPoint[];
   hourlyDistribution: HourlyPoint[];
+  meta: DashboardMeta;
 }
 
+const VALID_WINDOWS: AnalyticsWindow[] = [7, 30, 90];
+const DEFAULT_WINDOW: AnalyticsWindow = 30;
+
+const parseWindow = (raw: string | null): AnalyticsWindow => {
+  const parsed = Number(raw);
+  return (VALID_WINDOWS as number[]).includes(parsed) ? (parsed as AnalyticsWindow) : DEFAULT_WINDOW;
+};
+
+const windowLabel = (days: number): string => `Last ${days} days`;
+
 const Analytics = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDays = parseWindow(searchParams.get('days'));
+
   const [dashboard, setDashboard] = useState<AnalyticsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDashboard = useCallback(async (signal: AbortSignal) => {
-    const res = await apiFetch('/api/analytics/dashboard', { signal });
+  // Keep the URL honest: default has no `days` param (matches today's
+  // behavior), and any invalid value gets replaced with what's actually shown.
+  useEffect(() => {
+    const raw = searchParams.get('days');
+    if (raw !== null && parseWindow(raw) !== Number(raw)) {
+      const next = new URLSearchParams(searchParams);
+      next.set('days', String(requestedDays));
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, requestedDays, setSearchParams]);
+
+  const handleWindowChange = useCallback((days: AnalyticsWindow) => {
+    const next = new URLSearchParams(searchParams);
+    if (days === DEFAULT_WINDOW) {
+      next.delete('days');
+    } else {
+      next.set('days', String(days));
+    }
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  const fetchDashboard = useCallback(async (days: AnalyticsWindow, signal: AbortSignal) => {
+    const res = await apiFetch(`/api/analytics/dashboard?days=${days}`, { signal });
     const body = await res.json() as { data: AnalyticsDashboard; error: string | null };
     if (!res.ok || body.error) throw new Error(body.error ?? `Request failed (${res.status})`);
     return body.data;
@@ -53,7 +97,7 @@ const Analytics = () => {
 
     (async () => {
       try {
-        const data = await fetchDashboard(controller.signal);
+        const data = await fetchDashboard(requestedDays, controller.signal);
         if (!cancelled) setDashboard(data);
       } catch (err: unknown) {
         if (cancelled) return;
@@ -68,7 +112,19 @@ const Analytics = () => {
       cancelled = true;
       controller.abort();
     };
-  }, [fetchDashboard]);
+  }, [fetchDashboard, requestedDays]);
+
+  const activeDays = dashboard?.meta.days ?? requestedDays;
+  const activeLabel = windowLabel(activeDays);
+
+  const shortHistoryNote = useMemo(() => {
+    const meta = dashboard?.meta;
+    // days_available === 0 is a restaurant with no orders at all. That case
+    // belongs to the "No analytics data yet" empty state below; rendering
+    // "Showing 0 days" above it says the same thing twice and contradicts it.
+    if (!meta || meta.days_available <= 0 || meta.days_available >= meta.days) return null;
+    return `Showing ${meta.days_available} day${meta.days_available === 1 ? '' : 's'}; that is all the history we have.`;
+  }, [dashboard]);
 
   return (
     <div className="max-w-5xl">
@@ -76,15 +132,24 @@ const Analytics = () => {
         <div>
           <h1 className="text-[25px] font-extrabold tracking-[-0.02em] text-ink">Analytics</h1>
           <p className="mt-[5px] text-[13.5px] font-medium text-ink-3">
-            Revenue · Top items · Busiest hours · Last 30 days
+            Revenue · Top items · Busiest hours · {activeLabel}
           </p>
         </div>
-        <LastSyncedIndicator />
+        <div className="flex items-center gap-3">
+          <WindowSelector value={requestedDays} onChange={handleWindowChange} />
+          <LastSyncedIndicator />
+        </div>
       </div>
 
       {error && (
         <div className="rounded-sm bg-neg-bg border border-neg/30 px-4 py-3 text-sm text-neg mb-[18px]">
           {error}
+        </div>
+      )}
+
+      {!loading && !error && shortHistoryNote && (
+        <div className="rounded-sm bg-canvas border border-line px-4 py-3 text-sm text-ink-3 mb-[18px]">
+          {shortHistoryNote}
         </div>
       )}
 
@@ -108,7 +173,7 @@ const Analytics = () => {
             <div className="flex items-baseline justify-between gap-3 mb-1.5">
               <h2 className="text-base font-bold text-ink whitespace-nowrap inline-flex items-center gap-1.5">
                 Revenue Trend
-                <InfoTooltip text="Daily menu-item revenue (quantity × item price) over the last 30 days." />
+                <InfoTooltip text={`Daily menu-item revenue (quantity × item price) over the ${activeLabel.toLowerCase()}.`} />
               </h2>
             </div>
             <div className="flex gap-4 my-2.5 text-xs font-semibold text-ink-2">
@@ -124,7 +189,7 @@ const Analytics = () => {
             <div className="bg-surface border border-line rounded px-[22px] py-5">
               <h2 className="text-base font-bold text-ink mb-1.5 inline-flex items-center gap-1.5">
                 Top Items by Revenue
-                <InfoTooltip text="Ranked by menu-item revenue (quantity × item price) over the last 30 days." />
+                <InfoTooltip text={`Ranked by menu-item revenue (quantity × item price) over the ${activeLabel.toLowerCase()}.`} />
               </h2>
               <TopItemsChart data={dashboard?.topItems} loading={loading} />
             </div>

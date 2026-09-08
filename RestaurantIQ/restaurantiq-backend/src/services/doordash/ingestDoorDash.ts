@@ -120,10 +120,14 @@ export const ingestDoorDash = async (restaurantId: string): Promise<IngestResult
     const norm = normalizeOrder(o, restaurantId);
     if (norm) orderRows.push(norm);
   }
-  const orderCount = await upsertOrders(orderRows, externalToInternal, DOORDASH_SOURCE);
+  const { count: orderCount, insertedDates } = await upsertOrders(
+    orderRows,
+    externalToInternal,
+    DOORDASH_SOURCE,
+  );
 
   // 3. Recompute daily_summaries (source-agnostic — now includes DoorDash).
-  await refreshDailySummaries(restaurantId);
+  await refreshDailySummaries(restaurantId, { insertedOrderDates: insertedDates });
 
   // 4. Regenerate alerts from the freshly rebuilt summaries (fire-and-forget).
   await runAlerts(restaurantId, DOORDASH_SOURCE);

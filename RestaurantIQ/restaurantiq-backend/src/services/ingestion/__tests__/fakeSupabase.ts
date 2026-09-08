@@ -17,7 +17,12 @@
  *   - delete().eq().gte() / .in()            → remove matching rows
  *
  * Because re-sync idempotency hinges on upsert-conflict + insert-dedup behaving
- * like Postgres, those are modeled precisely. Filters supported: eq, in, gte.
+ * like Postgres, those are modeled precisely. Filters supported: eq, in, gte, lte.
+ *
+ * `.order(col)` actually sorts (ascending unless `{ ascending: false }`), and
+ * `.range(from, to)` slices after sorting/filtering — this matters because the
+ * persistence layer's paging correctness depends on range paging over an
+ * ordered query, not an unordered one (see docs/sharp-edges.md).
  *
  * The fake is attached as the `supabase` export via jest.mock; tests reach into
  * it through the helpers hung off the returned client:
@@ -29,14 +34,21 @@
 type Row = Record<string, any>;
 
 interface Filter {
-  kind: 'eq' | 'in' | 'gte' | 'lt';
+  kind: 'eq' | 'in' | 'gte' | 'lt' | 'lte';
   col: string;
   val: any;
+}
+
+interface CallRecord {
+  table: string;
+  op: string;
+  filters: Filter[];
 }
 
 interface Store {
   tables: Record<string, Row[]>;
   seq: number;
+  calls: CallRecord[];
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -47,6 +59,7 @@ const matches = (row: Row, filters: Filter[]): boolean =>
     if (f.kind === 'in') return (f.val as any[]).includes(row[f.col]);
     if (f.kind === 'gte') return row[f.col] >= f.val;
     if (f.kind === 'lt') return row[f.col] < f.val;
+    if (f.kind === 'lte') return row[f.col] <= f.val;
     return true;
   });
 
@@ -57,6 +70,10 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
   private filters: Filter[] = [];
   private returning = false;
   private limitN: number | undefined;
+  private orderCol: string | undefined;
+  private orderAsc = true;
+  private rangeFrom: number | undefined;
+  private rangeTo: number | undefined;
 
   constructor(private store: Store, private table: string) {}
 
@@ -113,11 +130,22 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
     this.filters.push({ kind: 'lt', col, val });
     return this;
   }
-  order(_col: string, _opts?: any) {
+  lte(col: string, val: any) {
+    this.filters.push({ kind: 'lte', col, val });
+    return this;
+  }
+  order(col: string, opts?: { ascending?: boolean }) {
+    this.orderCol = col;
+    this.orderAsc = opts?.ascending !== false;
     return this;
   }
   limit(n: number) {
     this.limitN = n;
+    return this;
+  }
+  range(from: number, to: number) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
     return this;
   }
 
@@ -141,9 +169,31 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
   ): Promise<{ data: any; error: any }> {
     let result: Row[] = [];
 
+    // Recorded so tests can assert on which queries actually ran (e.g. that a
+    // wide bootstrap-range query is not re-issued on a later sync) instead of
+    // only on the resulting row state, which can pass even if the expensive
+    // path re-ran and happened to be idempotent.
+    this.store.calls.push({
+      table: this.table,
+      op: this.op ?? 'unknown',
+      filters: clone(this.filters),
+    });
+
     switch (this.op) {
       case 'select': {
         result = this.rows().filter((r) => matches(r, this.filters)).map(clone);
+        if (this.orderCol) {
+          const col = this.orderCol;
+          const asc = this.orderAsc;
+          result.sort((a, b) => {
+            if (a[col] < b[col]) return asc ? -1 : 1;
+            if (a[col] > b[col]) return asc ? 1 : -1;
+            return 0;
+          });
+        }
+        if (this.rangeFrom !== undefined) {
+          result = result.slice(this.rangeFrom, (this.rangeTo ?? this.rangeFrom) + 1);
+        }
         if (this.limitN !== undefined) result = result.slice(0, this.limitN);
         break;
       }
@@ -229,17 +279,21 @@ export interface FakeSupabase {
   __seed(table: string, rows: Row[]): void;
   __rows(table: string): Row[];
   __tables: Record<string, Row[]>;
+  /** Every query executed since the last __reset()/__clearCalls(), in order. */
+  __calls(): CallRecord[];
+  __clearCalls(): void;
 }
 
 /** Build a fresh in-memory Supabase fake. */
 export const createFakeSupabase = (): FakeSupabase => {
-  const store: Store = { tables: {}, seq: 0 };
+  const store: Store = { tables: {}, seq: 0, calls: [] };
 
   const api: FakeSupabase = {
     from: (table: string) => new QueryBuilder(store, table),
     __reset: () => {
       store.tables = {};
       store.seq = 0;
+      store.calls = [];
     },
     __seed: (table: string, rows: Row[]) => {
       (store.tables[table] ??= []).push(...rows.map(clone));
@@ -247,6 +301,10 @@ export const createFakeSupabase = (): FakeSupabase => {
     __rows: (table: string) => (store.tables[table] ?? []).map(clone),
     get __tables() {
       return store.tables;
+    },
+    __calls: () => clone(store.calls),
+    __clearCalls: () => {
+      store.calls = [];
     },
   };
 

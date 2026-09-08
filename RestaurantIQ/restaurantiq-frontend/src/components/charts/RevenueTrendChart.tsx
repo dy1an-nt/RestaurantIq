@@ -51,6 +51,11 @@ const RevenueTrendChart = ({ data, loading }: Props) => {
     revenue: d.revenue_cents,
   }));
 
+  // Tick density scales with point count so a 90-day window doesn't cram
+  // every label onto the axis. Recharts' `interval` skips N ticks between
+  // each rendered one; 0 means render every tick.
+  const tickInterval = chartData.length <= 10 ? 0 : Math.ceil(chartData.length / 10) - 1;
+
   return (
     <ResponsiveContainer width="100%" height={280}>
       <AreaChart data={chartData} margin={{ top: 6, right: 16, left: 8, bottom: 4 }}>
@@ -66,7 +71,7 @@ const RevenueTrendChart = ({ data, loading }: Props) => {
           tick={{ fontSize: 11, fill: '#76808f', fontWeight: 600 }}
           tickLine={false}
           axisLine={false}
-          interval="preserveStartEnd"
+          interval={tickInterval}
         />
         <YAxis
           tickFormatter={(value: number) => formatDollars(value)}

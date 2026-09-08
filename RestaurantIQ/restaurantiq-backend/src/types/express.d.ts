@@ -16,6 +16,12 @@ declare global {
       user?: JWTPayload;
       restaurant?: ResolvedRestaurant;
       restaurantId?: string;
+      /**
+       * Output of validateQuery(). Deliberately NOT req.query: Express 5 makes
+       * req.query a getter-only property, so assigning to it throws. Cast this
+       * to the schema's inferred type at the point of use.
+       */
+      validatedQuery?: unknown;
     }
   }
 }

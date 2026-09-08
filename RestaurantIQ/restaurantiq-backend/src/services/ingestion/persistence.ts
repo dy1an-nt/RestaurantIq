@@ -19,6 +19,49 @@ import { generateAlerts } from '../alertsService';
 import { MenuItemRow, OrderSource, NormalizedOrder } from './types';
 
 /**
+ * PostgREST silently caps an unranged `select()` (commonly 1000 rows) with no
+ * error, so any read whose correctness depends on seeing every row must page
+ * with `.range()` and carry an explicit `.order()` — range paging over an
+ * unordered query can repeat or skip rows. See docs/sharp-edges.md.
+ */
+const SELECT_PAGE_SIZE = 1000;
+
+/** PostgREST's request-line length caps how many ids `.in()` can carry at once. */
+const ID_CHUNK_SIZE = 500;
+
+const chunk = <T>(arr: T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
+
+/**
+ * Page a full-table read with an explicit order + `.range()`, accumulating
+ * every row regardless of PostgREST's per-request row cap.
+ */
+async function selectPaged<T>(
+  table: string,
+  columns: string,
+  applyFilters: (q: any) => any,
+  orderCol: string,
+): Promise<T[]> {
+  const results: T[] = [];
+  let from = 0;
+  for (;;) {
+    let q = supabase.from(table).select(columns);
+    q = applyFilters(q);
+    q = q.order(orderCol, { ascending: true }).range(from, from + SELECT_PAGE_SIZE - 1);
+    const { data, error } = await q;
+    if (error) throw new Error(`${table} fetch failed: ${error.message}`);
+    const rows = (data ?? []) as T[];
+    results.push(...rows);
+    if (rows.length < SELECT_PAGE_SIZE) break;
+    from += SELECT_PAGE_SIZE;
+  }
+  return results;
+}
+
+/**
  * Upsert menu items by (restaurant_id, source, external_id).
  * Returns a map of external_id → internal menu_items.id for FK linking.
  */
@@ -68,6 +111,12 @@ export const upsertCatalog = async (
   return map;
 };
 
+export interface UpsertOrdersResult {
+  count: number;
+  /** Distinct (UTC) dates of orders actually inserted by this call. */
+  insertedDates: string[];
+}
+
 /**
  * Insert new orders + their line items, deduped by (restaurant_id, source,
  * external_id) so re-syncs never create duplicate orders.
@@ -76,8 +125,8 @@ export const upsertOrders = async (
   orders: NormalizedOrder[],
   externalToInternalMenuItem: Map<string, string>,
   source: OrderSource,
-): Promise<number> => {
-  if (orders.length === 0) return 0;
+): Promise<UpsertOrdersResult> => {
+  if (orders.length === 0) return { count: 0, insertedDates: [] };
 
   const restaurantId = orders[0].order.restaurant_id;
 
@@ -107,6 +156,8 @@ export const upsertOrders = async (
   const newWithId = withId.filter((o) => !existingExternalIds.has(o.order.external_id!));
   let count = newWithId.length;
   const newOrderIdMap = new Map<string, string>(); // external_id → internal id
+  const insertedDates = new Set<string>();
+  for (const o of newWithId) insertedDates.add(o.order.ordered_at.split('T')[0]);
 
   if (newWithId.length > 0) {
     const { data: inserted, error: insErr } = await supabase
@@ -190,6 +241,7 @@ export const upsertOrders = async (
       .single();
     if (insErr) throw new Error(`orders insert failed: ${insErr.message}`);
     count++;
+    insertedDates.add(order.ordered_at.split('T')[0]);
 
     if (items.length > 0) {
       const mapped = items.flatMap((it) => {
@@ -207,73 +259,89 @@ export const upsertOrders = async (
     }
   }
 
-  return count;
+  return { count, insertedDates: Array.from(insertedDates) };
 };
 
+const isoDate = (d: Date): string => d.toISOString().split('T')[0];
+
+/** How far back the one-time coverage bootstrap recomputes, and the floor any
+ * backdated top-up is clamped to. */
+const COVERAGE_BOOTSTRAP_DAYS = 90;
+const STEADY_STATE_DAYS = 30;
+
 /**
- * Recompute daily_summaries for the last 30 days from orders/order_items.
- *
- * This is intentionally source-agnostic: it aggregates EVERY order for the
- * restaurant regardless of channel, so once DoorDash orders land in the orders
- * table they automatically flow into summaries (and therefore margin analysis,
- * insights, and alerts) alongside Square.
+ * Recompute daily_summaries for an explicit [from, to] range from
+ * orders/order_items. Pure recompute-and-prune: no range selection logic.
  *
  * Uses upsert (not delete+insert) so that if the write fails, the previous
- * data is preserved. After a successful upsert, rows in the 30-day window
- * that have no current activity are deleted (stale rows from deleted items).
+ * data is preserved. After a successful upsert, rows in the range that have
+ * no current activity are deleted (stale rows from deleted items).
  *
- * `now` is injected (default: real clock) so the 30-day window is deterministic
- * under test. Reading `new Date()` inline here made the window slide with the
- * calendar, which silently rotted both the data and the tests that seeded fixed
- * dates — inject the instant instead of coupling to the wall clock.
+ * Every delete here carries restaurant_id + a lower AND upper date bound —
+ * an unbounded `.gte('date', from)` is only safe while ranges are trailing.
+ * Once ranges can be arbitrary (bootstrap, backdated top-up), an unbounded
+ * delete on a restaurant with no orders in that range would wipe every
+ * summary from `from` forward, including today's.
  */
-export const refreshDailySummaries = async (
+async function recomputeRange(
   restaurantId: string,
-  now: Date = new Date(),
-): Promise<void> => {
-  const since = new Date(now);
-  since.setDate(since.getDate() - 30);
-  const sinceIso = since.toISOString();
-  const sinceDate = sinceIso.split('T')[0];
+  from: Date,
+  to: Date,
+): Promise<{ from: string; to: string; orderCount: number }> {
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+  const fromDate = isoDate(from);
+  const toDate = isoDate(to);
 
-  const { data: orders, error: ordersErr } = await supabase
-    .from('orders')
-    .select('id, ordered_at')
-    .eq('restaurant_id', restaurantId)
-    .gte('ordered_at', sinceIso);
-  if (ordersErr) throw new Error(`orders fetch failed: ${ordersErr.message}`);
+  const orders = await selectPaged<{ id: string; ordered_at: string }>(
+    'orders',
+    'id, ordered_at',
+    (q) => q.eq('restaurant_id', restaurantId).gte('ordered_at', fromIso).lte('ordered_at', toIso),
+    'ordered_at',
+  );
 
-  if (!orders || orders.length === 0) {
-    // No orders in the window — clear summaries for this period.
+  if (orders.length === 0) {
+    // No orders in the range — clear summaries for this period.
     const { error: delErr } = await supabase
       .from('daily_summaries')
       .delete()
       .eq('restaurant_id', restaurantId)
-      .gte('date', sinceDate);
+      .gte('date', fromDate)
+      .lte('date', toDate);
     if (delErr) throw new Error(`daily_summaries delete failed: ${delErr.message}`);
-    return;
+    return { from: fromDate, to: toDate, orderCount: 0 };
   }
 
-  const orderIds = orders.map((o) => o.id as string);
-  const { data: orderItems, error: itemsErr } = await supabase
-    .from('order_items')
-    .select('order_id, menu_item_id, quantity, unit_price_cents')
-    .in('order_id', orderIds);
-  if (itemsErr) throw new Error(`order_items fetch failed: ${itemsErr.message}`);
+  const orderIds = orders.map((o) => o.id);
+  const orderItems: { order_id: string; menu_item_id: string | null; quantity: number; unit_price_cents: number }[] = [];
+  for (const idChunk of chunk(orderIds, ID_CHUNK_SIZE)) {
+    const rows = await selectPaged<{
+      order_id: string;
+      menu_item_id: string | null;
+      quantity: number;
+      unit_price_cents: number;
+    }>(
+      'order_items',
+      'order_id, menu_item_id, quantity, unit_price_cents',
+      (q) => q.in('order_id', idChunk),
+      'order_id',
+    );
+    orderItems.push(...rows);
+  }
 
-  const itemsByOrder = new Map<string, any[]>();
-  for (const oi of orderItems ?? []) {
-    const arr = itemsByOrder.get(oi.order_id as string) ?? [];
+  const itemsByOrder = new Map<string, typeof orderItems>();
+  for (const oi of orderItems) {
+    const arr = itemsByOrder.get(oi.order_id) ?? [];
     arr.push(oi);
-    itemsByOrder.set(oi.order_id as string, arr);
+    itemsByOrder.set(oi.order_id, arr);
   }
 
   type Bucket = { qty: number; rev: number; orders: Set<string> };
   const buckets = new Map<string, Bucket>();
 
-  for (const o of orders as any[]) {
-    const date = (o.ordered_at as string).split('T')[0];
-    const lines = itemsByOrder.get(o.id as string) ?? [];
+  for (const o of orders) {
+    const date = o.ordered_at.split('T')[0];
+    const lines = itemsByOrder.get(o.id) ?? [];
     for (const oi of lines) {
       if (!oi.menu_item_id) continue;
       const key = `${date}|${oi.menu_item_id}`;
@@ -303,28 +371,121 @@ export const refreshDailySummaries = async (
     .upsert(summaries, { onConflict: 'restaurant_id,menu_item_id,date' });
   if (upsertErr) throw new Error(`daily_summaries upsert failed: ${upsertErr.message}`);
 
-  // After successful upsert, prune stale rows (rows in the window that no
+  // After successful upsert, prune stale rows (rows in the range that no
   // longer have any orders — e.g. deleted items from a prior sync window).
   const activeKeys = new Set(summaries.map((s) => `${s.menu_item_id}|${s.date}`));
-  const { data: existing } = await supabase
-    .from('daily_summaries')
-    .select('id, menu_item_id, date')
-    .eq('restaurant_id', restaurantId)
-    .gte('date', sinceDate);
+  const existing = await selectPaged<{ id: string; menu_item_id: string | null; date: string }>(
+    'daily_summaries',
+    'id, menu_item_id, date',
+    (q) => q.eq('restaurant_id', restaurantId).gte('date', fromDate).lte('date', toDate),
+    'date',
+  );
 
-  const staleIds = (existing ?? [])
+  const staleIds = existing
     .filter((r) => r.menu_item_id && !activeKeys.has(`${r.menu_item_id}|${r.date}`))
-    .map((r) => r.id as string);
+    .map((r) => r.id);
 
   if (staleIds.length > 0) {
     const { error: delErr } = await supabase
       .from('daily_summaries')
       .delete()
+      .eq('restaurant_id', restaurantId)
+      .gte('date', fromDate)
+      .lte('date', toDate)
       .in('id', staleIds);
     if (delErr) {
       console.error('[ingestion] stale daily_summaries cleanup failed:', delErr.message);
     }
   }
+
+  return { from: fromDate, to: toDate, orderCount: orders.length };
+}
+
+/**
+ * Recompute daily_summaries for a restaurant, choosing the range to recompute
+ * (see the module doc comment on the exported function) then delegating the
+ * actual read/upsert/prune work to recomputeRange.
+ *
+ * `now` is injected (default: real clock) so the window is deterministic
+ * under test. Reading `new Date()` inline here made the window slide with the
+ * calendar, which silently rotted both the data and the tests that seeded fixed
+ * dates — inject the instant instead of coupling to the wall clock.
+ */
+export const refreshDailySummaries = async (
+  restaurantId: string,
+  opts: { from?: Date; to?: Date; insertedOrderDates?: string[] } = {},
+  now: Date = new Date(),
+): Promise<{ from: string; to: string; orderCount: number }> => {
+  const target = new Date(now);
+  target.setUTCDate(target.getUTCDate() - COVERAGE_BOOTSTRAP_DAYS);
+  const targetDate = isoDate(target);
+
+  let from: Date;
+  let to: Date;
+  let bootstrapping = false;
+
+  if (opts.from) {
+    // 1. Explicit range — the seam a future chunked backfill uses.
+    from = opts.from;
+    to = opts.to ?? now;
+  } else {
+    // 2. Coverage bootstrap: one time per restaurant, only when the watermark
+    // is missing or later than the 90-day target.
+    const { data: restRow, error: restErr } = await supabase
+      .from('restaurants')
+      .select('summaries_covered_from')
+      .eq('id', restaurantId)
+      .maybeSingle();
+    if (restErr) throw new Error(`restaurants lookup failed: ${restErr.message}`);
+
+    const coveredFrom = restRow?.summaries_covered_from
+      ? new Date(`${restRow.summaries_covered_from}T00:00:00.000Z`)
+      : null;
+
+    if (!coveredFrom || coveredFrom > target) {
+      bootstrapping = true;
+      from = target;
+      to = now;
+    } else {
+      // 3. Steady state — same cost as before this change.
+      from = new Date(now);
+      from.setUTCDate(from.getUTCDate() - STEADY_STATE_DAYS);
+      to = now;
+    }
+  }
+
+  const result = await recomputeRange(restaurantId, from, to);
+
+  // Write the watermark ONLY after a successful recompute (upsert + prune) —
+  // writing it first would permanently mark an incomplete restaurant as covered.
+  if (bootstrapping) {
+    const { error: wmErr } = await supabase
+      .from('restaurants')
+      .update({ summaries_covered_from: targetDate })
+      .eq('id', restaurantId);
+    if (wmErr) throw new Error(`restaurants watermark update failed: ${wmErr.message}`);
+  }
+
+  // 4. Backdated top-up, additive to the steady-state path only: at most one
+  // extra recompute per sync, over the single contiguous range covering every
+  // inserted order older than the steady-state window, clamped to the 90-day
+  // target so this can never re-walk further back than the bootstrap already
+  // guaranteed.
+  if (!opts.from && !bootstrapping && opts.insertedOrderDates && opts.insertedOrderDates.length > 0) {
+    const steadyFromDate = isoDate(from);
+    const olderDates = opts.insertedOrderDates.filter((d) => d < steadyFromDate);
+    if (olderDates.length > 0) {
+      const minOlderDate = olderDates.reduce((a, b) => (a < b ? a : b));
+      const clampedFromDate = minOlderDate < targetDate ? targetDate : minOlderDate;
+      const topUpFrom = new Date(`${clampedFromDate}T00:00:00.000Z`);
+      const topUpTo = new Date(from.getTime() - 1);
+      if (topUpFrom <= topUpTo) {
+        await recomputeRange(restaurantId, topUpFrom, topUpTo);
+      }
+    }
+  }
+
+  return result;
 };
 
 /**
