@@ -8,18 +8,27 @@ name: CI
 # pull request so broken code is rejected automatically instead of relying on
 # the author remembering to run them.
 #
-# The repo is doubly-nested (git root -> RestaurantIQ/ -> app packages), so each
-# job sets its own working-directory and cache path accordingly.
+# The repo is doubly-nested (git root -> RestaurantIQ/ -> app packages). Both
+# app packages run the same gate sequence, so they share one matrix job and
+# differ only in the two steps that are genuinely package-specific: the backend
+# has a Jest suite, the frontend has a Vite build.
 
 on:
   push:
     branches: [main]
   pull_request:
 
+# CI compiles, tests, and audits. It never writes to the repository, so the
+# token gets read-only scope instead of whatever the repo default happens to
+# be. Naming any permission drops every unnamed one to `none`.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref so a fresh push doesn't queue behind a
-# stale one.
+# stale one. The group is keyed by workflow as well as ref, so a future
+# workflow cannot collide with this one's group.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,22 +44,37 @@ jobs:
       - name: Check documentation facts and paths
         run: node scripts/check-docs.mjs
 
-  backend:
-    name: Backend (typecheck · lint · test · audit)
+  package:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      # A red backend should not cancel the frontend run. Seeing both failures
+      # in one push beats fixing one, pushing, and discovering the other.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Backend (typecheck · lint · test · audit)
+            directory: RestaurantIQ/restaurantiq-backend
+            test: true
+            build: false
+          - name: Frontend (typecheck · lint · build · audit)
+            directory: RestaurantIQ/restaurantiq-frontend
+            test: false
+            build: true
     defaults:
       run:
-        working-directory: RestaurantIQ/restaurantiq-backend
+        working-directory: ${{ matrix.directory }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           # Node 20 hit end-of-life April 2026; 22 is the active LTS and
-          # matches the engines pin in both package.jsons.
+          # matches the engines pin in both package.jsons. scripts/check-docs.mjs
+          # fails CI if this drifts from those pins or from the README.
           node-version: 22
           cache: npm
-          cache-dependency-path: RestaurantIQ/restaurantiq-backend/package-lock.json
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
       - name: Install (clean, lockfile-pinned)
         run: npm ci
       - name: Typecheck
@@ -58,34 +82,13 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Test
+        if: matrix.test
         run: npm test
-      - name: Audit production dependencies (fail on high+)
-        run: npm audit --omit=dev --audit-level=high
-
-  frontend:
-    name: Frontend (typecheck · lint · audit)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: RestaurantIQ/restaurantiq-frontend
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: RestaurantIQ/restaurantiq-frontend/package-lock.json
-      - name: Install (clean, lockfile-pinned)
-        run: npm ci
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
       - name: Build
         # tsc alone doesn't catch Vite/Rollup failures (case-sensitive imports
         # on Linux, asset resolution) - without this they first surface at the
         # Vercel deploy, after merge.
+        if: matrix.build
         run: npm run build
       - name: Audit production dependencies (fail on high+)
         run: npm audit --omit=dev --audit-level=high

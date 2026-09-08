@@ -12,14 +12,18 @@ name: Uptime
 #   Settings -> Secrets and variables -> Actions -> Variables -> New variable
 # Without it every run skips, so the workflow is inert until configured.
 #
-# Limitation worth knowing: GitHub's scheduled runs are best-effort and can be
-# delayed by several minutes under load, so treat this as a safety net rather
-# than a tight-SLA monitor. docs/operations.md documents an external monitor
-# (UptimeRobot / Better Stack) as the higher-resolution option.
+# What the cadence below actually buys you, measured rather than assumed: over
+# the 60 scheduled runs before 2026-09-08, the average gap between runs was
+# 194 minutes, with a spread of 45 to 339. GitHub runs `schedule` on a
+# best-effort queue and drops most ticks on a repo this size, so the `*/5`
+# cron is an upper bound on frequency, not a promise. Treat this as "something
+# noticed the outage eventually", not as minute-resolution monitoring.
+# docs/operations.md documents an external monitor (UptimeRobot / Better Stack)
+# as the option that actually delivers a tight interval.
 
 on:
   schedule:
-    # Every 5 minutes. GitHub may coalesce or delay these under load.
+    # Every 5 minutes in principle. See the measured cadence note above.
     - cron: '*/5 * * * *'
   # Allow a manual run to verify the workflow itself works.
   workflow_dispatch:
@@ -30,19 +34,24 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  # Needed only to open/comment on the outage issue.
+  # Needed only to open, comment on, and close the outage issue.
   issues: write
 
 jobs:
   health:
     name: Probe /health
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
+    env:
+      # Read through the environment, never interpolated into a `run:` body.
+      # A `${{ }}` expression is pasted into the script before bash parses it,
+      # so its contents become shell source; $HEALTH_URL is only ever data.
+      HEALTH_URL: ${{ vars.HEALTH_URL }}
     steps:
       - name: Check configuration
         id: config
         run: |
-          if [ -z "${{ vars.HEALTH_URL }}" ]; then
+          if [ -z "$HEALTH_URL" ]; then
             echo "HEALTH_URL repository variable is not set - skipping."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
@@ -56,6 +65,13 @@ jobs:
           # Three attempts, 20s apart. A single failed request is usually a
           # transient blip (deploy restart, network hiccup); paging on it
           # trains everyone to ignore the alert. Three in a row is a signal.
+          #
+          # The 45s ceiling is sized for a cold start, not for a warm request.
+          # Render's free tier sleeps an idle service, and because the schedule
+          # above fires hours apart rather than minutes, essentially every probe
+          # is the request that wakes it. At the previous 20s ceiling attempt 1
+          # timed out on all 60 of the last runs and attempt 2 succeeded, which
+          # quietly spent one of the three strikes on a cold start every time.
           attempt=1
           max=3
           while [ "$attempt" -le "$max" ]; do
@@ -65,7 +81,7 @@ jobs:
             # yields one "000", not the doubled value `|| echo` produces.
             rm -f /tmp/health.json
             code=$(curl -sS -o /tmp/health.json -w '%{http_code}' \
-              --max-time 20 "${{ vars.HEALTH_URL }}" || true)
+              --connect-timeout 10 --max-time 45 "$HEALTH_URL" || true)
             code="${code:-000}"
             body=$(head -c 300 /tmp/health.json 2>/dev/null || true)
 
@@ -79,15 +95,22 @@ jobs:
             last_code="$code"
             last_body="$body"
             attempt=$((attempt + 1))
-            [ "$attempt" -le "$max" ] && sleep 20
+            if [ "$attempt" -le "$max" ]; then
+              sleep 20
+            fi
           done
 
-          echo "healthy=false" >> "$GITHUB_OUTPUT"
+          # The delimiter is random because the body is remote-controlled: a
+          # response containing a line that matches a fixed delimiter would end
+          # the block early and let the rest of the body write arbitrary step
+          # outputs. Same class of bug as SQL injection, one layer down.
+          delimiter="EOF_$(openssl rand -hex 16)"
           {
+            echo "healthy=false"
             echo "code=${last_code:-000}"
-            echo "body<<EOF"
+            echo "body<<${delimiter}"
             echo "${last_body:-<empty>}"
-            echo "EOF"
+            echo "${delimiter}"
           } >> "$GITHUB_OUTPUT"
           exit 1
 
@@ -140,3 +163,64 @@ jobs:
                 body: detail,
               });
             }
+
+      - name: Resolve outage issue on recovery
+        # An outage thread that nobody closes is indistinguishable from a live
+        # outage. The probe is the only thing that knows the service came back,
+        # so it is the thing that has to say so.
+        if: steps.probe.outputs.healthy == 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const title = 'Backend health check failing';
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'uptime',
+              per_page: 20,
+            });
+            const existing = open.find((i) => i.title === title);
+            if (!existing) return;
+
+            // Comment before closing. The close alone records that it ended,
+            // not how long it lasted, and the outage window is the first thing
+            // anyone asks for in a postmortem. Bounds are approximate: the
+            // opening probe and this one are the observations, and the schedule
+            // between them is coarse (see the cadence note at the top).
+            const openedAt = new Date(existing.created_at);
+            const recoveredAt = new Date();
+            const minutes = Math.round((recoveredAt - openedAt) / 60000);
+            const duration =
+              minutes >= 120
+                ? `~${(minutes / 60).toFixed(1)} hours`
+                : `~${minutes} minutes`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body:
+                `Recovered. \`/health\` returned 200 with \`"status":"ok"\`.\n\n` +
+                `- Issue opened: ${openedAt.toISOString()}\n` +
+                `- Recovery observed: ${recoveredAt.toISOString()}\n` +
+                `- Outage window: ${duration} (bounded by probe times, not exact)\n` +
+                `- Run: ${runUrl}\n\n` +
+                `Closing. A later failure reopens a new thread rather than ` +
+                `reusing this one, so the history stays one issue per outage.`,
+            });
+
+            // 'completed' rather than 'not_planned': the thread did its job and
+            // the condition it tracked is resolved. 'not_planned' renders as
+            // dropped work, which is the wrong signal for a fixed outage.
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
