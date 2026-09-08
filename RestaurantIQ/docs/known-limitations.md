@@ -46,14 +46,18 @@
 - ~~**No integrated error tracking / uptime monitoring / alerting.**~~ *Resolved
   2026-08-26:* Sentry reports 5xx responses, uncaught exceptions, and unhandled
   rejections (events scrubbed of tokens/JWTs/keys before sending), and a GitHub
-  Actions workflow probes `/health` every ~5 min, opening an issue after three
-  consecutive failures. **Both are inert until configured** - Sentry needs
-  `SENTRY_DSN`, the uptime check needs a `HEALTH_URL` repository variable. Until
+  Actions workflow probes `/health` on a 5-minute cron (see the resolution
+  caveat below), opening an issue after three consecutive failures. **Both are
+  inert until configured** - Sentry needs `SENTRY_DSN`, the uptime check needs
+  a `HEALTH_URL` repository variable. Until
   those are set, monitoring is still manual. Setup: `deployment.md` -> Monitoring.
-- **Uptime resolution is coarse.** GitHub's scheduled runs are best-effort and
-  can be delayed several minutes, so the uptime check is a safety net, not a
-  tight-SLA monitor. An external monitor (UptimeRobot / Better Stack) is the
-  higher-resolution option if the pilot needs faster alerting.
+- **Uptime resolution is far coarser than the cron suggests.** The workflow asks
+  for a run every 5 minutes; measured over the 60 scheduled runs before
+  2026-09-08, GitHub delivered one every 194 minutes on average, with gaps
+  ranging from 45 to 339 minutes. Scheduled runs are best-effort and most ticks
+  are dropped, so the uptime check is a safety net, not a tight-SLA monitor. An
+  external monitor (UptimeRobot / Better Stack) is the higher-resolution option
+  if the pilot needs faster alerting.
 - **Developer tools gate is client-side.** Sync Health is hidden behind a
   localStorage dev-mode flag (Settings -> Developer), not a server-side role. It's
   a UX guard to keep an engineering page out of an owner's way, not a security

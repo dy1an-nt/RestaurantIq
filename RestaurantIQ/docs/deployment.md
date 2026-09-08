@@ -147,17 +147,22 @@ the whole event is pattern-scrubbed for Square tokens, Supabase JWTs, Anthropic
 keys, and 64-hex encryption keys. This matters because onboarding posts a Square
 access token in a request body, and Sentry's own defaults would capture it.
 
-**Uptime (GitHub Actions).** `.github/workflows/uptime.yml` probes `/health`
-every ~5 minutes and opens (or comments on) a GitHub issue labelled `uptime`
-after three consecutive failures. One-time setup:
+**Uptime (GitHub Actions).** `.github/workflows/uptime.yml` asks GitHub to probe
+`/health` every 5 minutes and opens (or comments on) a GitHub issue labelled
+`uptime` after three consecutive failures. When a later probe passes, it comments
+the outage window on that issue and closes it, so an open `uptime` issue always
+means the service is still down. One-time setup:
 
 > Settings → Secrets and variables → Actions → Variables → New repository
 > variable → `HEALTH_URL` = `https://<backend>.onrender.com/health`
 
-Without that variable every run skips. GitHub's scheduled runs are best-effort
-and can be delayed several minutes under load, so this is a safety net rather
-than a tight-SLA monitor; an external monitor (UptimeRobot, Better Stack) gives
-1-minute resolution and real alerting if the pilot needs it.
+Without that variable every run skips. The 5-minute cron is a request, not a
+guarantee: measured across the 60 scheduled runs before 2026-09-08, GitHub
+actually fired this workflow every 194 minutes on average (spread: 45 to 339).
+Scheduled runs sit on a best-effort queue and most ticks are dropped, so treat
+this as a safety net that notices an outage eventually, not as a tight-SLA
+monitor. An external monitor (UptimeRobot, Better Stack) gives 1-minute
+resolution and real alerting if the pilot needs it.
 
 Full template with inline notes:
 [`restaurantiq-backend/.env.example`](../restaurantiq-backend/.env.example)
