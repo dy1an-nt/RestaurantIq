@@ -15,6 +15,12 @@
 # So: minor and patch updates group into one low-risk PR per ecosystem, and
 # every major gets its own PR. A major is a migration and deserves to be read,
 # tested, and merged on its own.
+#
+# Semver treats any 0.x bump as a minor, so a pre-1.0 package can ship a
+# breaking change inside the safe group. eslint-plugin-react-refresh 0.5
+# requires ESLint 9, and it sank the frontend group at `npm ci` while the repo
+# was still on ESLint 8. Pre-1.0 packages known to break that way are excluded
+# from the group and get their own PR, like a major.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -35,6 +41,7 @@ updates:
     groups:
       frontend-dependencies:
         patterns: ["*"]
+        exclude-patterns: ["eslint-plugin-react-refresh"]
         update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions

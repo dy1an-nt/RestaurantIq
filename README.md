@@ -6,7 +6,7 @@
 
 **Restaurant analytics and AI advisory software for independent operators.** RestaurantIQ combines Square and DoorDash order data, calculates menu performance and margins, and turns those numbers into prioritized actions.
 
-**Pilot status:** deployment configuration targets Vercel and Render. A verified public demo URL is not currently published.
+**Live:** [restaurant-iq-drab.vercel.app](https://restaurant-iq-drab.vercel.app), with the API on Render. Sign-up is open, but analytics need a connected Square account and there is no demo account yet. The backend runs on Render's free plan, so the first request after idle can take about 30 seconds.
 
 ![RestaurantIQ dashboard showing menu performance, KPIs, and items needing attention](RestaurantIQ/docs/screenshots/dashboard.png)
 
@@ -110,12 +110,12 @@ The project records decisions and failures instead of presenting a perfect build
 
 ## Current status
 
-The application is being prepared for a small restaurant pilot. The repository includes Vercel and Render deployment configuration, but a verified public demo URL is not currently published. Current product constraints include:
+The application is deployed on Vercel and Render and is being prepared for a small restaurant pilot. Current product constraints include:
 
 - One restaurant location per account
 - Square and DoorDash integrations only
 - Manual integration credential setup
-- A fixed analytics window and no CSV or PDF export
+- Preset analytics windows (7, 30, or 90 days) with no custom date range, and no CSV or PDF export
 - No automated frontend runtime tests
 
 The complete gap list is maintained in [`known-limitations.md`](RestaurantIQ/docs/known-limitations.md). Pilot operations are tracked in [`pilot-checklist.md`](RestaurantIQ/docs/pilot-checklist.md).
