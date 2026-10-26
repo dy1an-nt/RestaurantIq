@@ -12,9 +12,11 @@
   match exactly**. This is labeled in-product (dashboard note + per-metric
   tooltips) but **not reconciled**. *(Review section 3 #1; Sprint R chose labeling over
   a data-model change.)*
-- **Fixed 30-day analysis window.** Every analytics surface uses a trailing
-  30-day window. Data older than that isn't shown, and there's no date picker.
-  A "Last synced" indicator + stale-data warning surface when data is old.
+- **Preset analysis windows only.** The Analytics page offers trailing 7, 30,
+  and 90-day windows (URL-synced, default 30). Every other surface (dashboard
+  KPIs, margins, insights) still uses a trailing 30 days. There is no custom
+  date range. A "Last synced" indicator + stale-data warning surface when data
+  is old.
 - **Aggregation is computed app-side.** Fine for a pilot-scale restaurant
   (thousands of orders/month); a very high-volume location (tens of thousands/
   month) would pull a lot of rows to aggregate. *(Review M1.)*
