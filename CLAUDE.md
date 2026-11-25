@@ -57,4 +57,18 @@ The upstream license text is preserved in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY
   wired for Claude in `.claude/settings.json` and for Codex in
   `.codex/hooks.json`. If it reported a failure at session start, fix that
   before anything else.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues, managed with the `gh` CLI. See `RestaurantIQ/docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `RestaurantIQ/docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context, with `RestaurantIQ/CONTEXT.md` and `RestaurantIQ/docs/adr/`. See `RestaurantIQ/docs/agents/domain.md`.
 <!-- shared:root-instructions:end -->
